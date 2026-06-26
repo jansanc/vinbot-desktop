@@ -1,0 +1,175 @@
+.progress-container {
+  width: 100%;
+  max-width: 480px;
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.progress-card {
+  background: white;
+  border-radius: 12px;
+  padding: 2.5rem 2rem;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  text-align: center;
+}
+
+.progress-card h2 {
+  margin-bottom: 2rem;
+  color: #111827;
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.spinner {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 2rem;
+  border: 3px solid #e5e7eb;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.progress-bar-container {
+  width: 100%;
+  height: 6px;
+  background: #e5e7eb;
+  border-radius: 9px;
+  overflow: hidden;
+  margin-bottom: 1.5rem;
+}
+
+.progress-bar {
+  height: 100%;
+  background: #3b82f6;
+  border-radius: 9px;
+  transition: width 0.3s ease;
+}
+
+.progress-percentage {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: #3b82f6;
+  margin-bottom: 2rem;
+  letter-spacing: -0.02em;
+}
+
+.steps-list {
+  text-align: left;
+  margin-bottom: 2rem;
+}
+
+.step-item {
+  display: flex;
+  align-items: center;
+  padding: 0.875rem 0;
+  margin-bottom: 0.75rem;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.step-item.completed {
+  background: #f0fdf4;
+  padding: 0.875rem 0.75rem;
+}
+
+.step-item.active {
+  background: #eff6ff;
+  padding: 0.875rem 0.75rem;
+}
+
+.step-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-right: 0.875rem;
+  font-weight: 600;
+  border-radius: 50%;
+  font-size: 0.75rem;
+  flex-shrink: 0;
+}
+
+.step-item.completed .step-icon {
+  background: #10b981;
+  color: white;
+}
+
+.step-item.active .step-icon {
+  background: #3b82f6;
+  color: white;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(59, 130, 246, 0);
+  }
+}
+
+.step-item .step-icon {
+  color: #d1d5db;
+  background: #f3f4f6;
+}
+
+.step-label {
+  color: #6b7280;
+  font-weight: 500;
+  font-size: 0.9375rem;
+}
+
+.step-item.completed .step-label {
+  color: #047857;
+  font-weight: 600;
+}
+
+.step-item.active .step-label {
+  color: #1e40af;
+  font-weight: 600;
+}
+
+.progress-note {
+  color: #9ca3af;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  margin-top: 1.5rem;
+  letter-spacing: 0.3px;
+}
+
+@media (max-width: 640px) {
+  .progress-card {
+    padding: 2rem 1.5rem;
+  }
+
+  .progress-card h2 {
+    font-size: 1.125rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .progress-percentage {
+    font-size: 2rem;
+  }
+}

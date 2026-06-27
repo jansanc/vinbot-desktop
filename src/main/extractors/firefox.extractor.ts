@@ -24,7 +24,7 @@ function getVintedHostname(vintedBaseUrl: string): string {
     const url = new URL(vintedBaseUrl);
     return url.hostname.replace(/^www\./, "");
   } catch {
-    return "vinted.com";
+    throw new Error(`Invalid Vinted base URL: ${vintedBaseUrl}`);
   }
 }
 
@@ -76,33 +76,34 @@ function convertValue(value: unknown): string {
 }
 
 export function parseFirefoxPrefs(profilePath: string): Record<string, any> {
-  try {
-    const prefsPath = path.join(profilePath, "prefs.js");
-    const content = readFileSync(prefsPath, "utf-8");
+  const prefsPath = path.join(profilePath, "prefs.js");
 
-    const prefs: Record<string, any> = {};
-    const regex = /user_pref\("([^"]+)",\s*(.+?)\);/g;
-    let match;
-
-    while ((match = regex.exec(content)) !== null) {
-      const key = match[1];
-      let value: any = match[2];
-
-      if (value === "true") value = true;
-      else if (value === "false") value = false;
-      else if (!isNaN(Number(value))) value = Number(value);
-      else if (value.startsWith('"') && value.endsWith('"')) {
-        value = value.slice(1, -1);
-      }
-
-      prefs[key] = value;
-    }
-
-    return prefs;
-  } catch (error) {
-    console.warn("Could not read prefs.js:", error);
+  if (!existsSync(prefsPath)) {
+    console.warn("[Firefox] prefs.js not found, using default preferences");
     return {};
   }
+
+  const content = readFileSync(prefsPath, "utf-8");
+
+  const prefs: Record<string, any> = {};
+  const regex = /user_pref\("([^"]+)",\s*(.+?)\);/g;
+  let match;
+
+  while ((match = regex.exec(content)) !== null) {
+    const key = match[1];
+    let value: any = match[2];
+
+    if (value === "true") value = true;
+    else if (value === "false") value = false;
+    else if (!isNaN(Number(value))) value = Number(value);
+    else if (value.startsWith('"') && value.endsWith('"')) {
+      value = value.slice(1, -1);
+    }
+
+    prefs[key] = value;
+  }
+
+  return prefs;
 }
 
 export function getFirefoxVersion(): string {
@@ -195,9 +196,10 @@ export function extractCookies(
     return [];
   }
 
+  const buffer = readFileSync(dbPath);
+  const db = new SQL.Database(buffer);
+
   try {
-    const buffer = readFileSync(dbPath);
-    const db = new SQL.Database(buffer);
     const results = db.exec(
       "SELECT name, value, host, path, isSecure, isHttpOnly, sameSite, expiry FROM moz_cookies",
     );
@@ -206,7 +208,6 @@ export function extractCookies(
       return [];
     }
 
-    db.close();
     const sameSiteMap: Record<number, string> = {
       0: "None",
       1: "Lax",
@@ -233,9 +234,8 @@ export function extractCookies(
               : sameSiteMap[sameSite as number] || "None",
           }) as Cookie,
       );
-  } catch (error) {
-    console.warn("[Cookies] Error:", error);
-    return [];
+  } finally {
+    db.close();
   }
 }
 
@@ -252,22 +252,23 @@ export function extractLocalStorage(
     return [];
   }
 
-  try {
-    readdirSync(storageDir).forEach((encodedOrigin) => {
-      const origin = encodedOrigin.replace(/\+{3}/g, "://").replace(/\^/g, ":");
+  const entries = readdirSync(storageDir);
 
-      if (!origin.includes(vintedHostname)) {
-        return;
-      }
+  entries.forEach((encodedOrigin) => {
+    const origin = encodedOrigin.replace(/\+{3}/g, "://").replace(/\^/g, ":");
 
-      const dbPath = path.join(storageDir, encodedOrigin, "ls", "data.sqlite");
+    if (!origin.includes(vintedHostname)) {
+      return;
+    }
 
-      if (existsSync(dbPath)) {
+    const dbPath = path.join(storageDir, encodedOrigin, "ls", "data.sqlite");
+
+    if (existsSync(dbPath)) {
+      try {
+        const buffer = readFileSync(dbPath);
+        const db = new SQL.Database(buffer);
         try {
-          const buffer = readFileSync(dbPath);
-          const db = new SQL.Database(buffer);
           const results = db.exec("SELECT key, value FROM data");
-          db.close();
 
           if (results.length && results[0].values.length > 0) {
             const localStorage: LocalStorageItem[] = results[0].values
@@ -284,14 +285,15 @@ export function extractLocalStorage(
               });
             }
           }
-        } catch (e) {
-          console.warn(`[LocalStorage] Error reading ${encodedOrigin}:`, e);
+        } finally {
+          db.close();
         }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error(`[LocalStorage] Failed to read ${encodedOrigin}: ${msg}`);
       }
-    });
-  } catch (error) {
-    console.warn("[LocalStorage] Error:", error);
-  }
+    }
+  });
 
   return origins;
 }
@@ -309,22 +311,23 @@ export function extractSessionStorage(
     return [];
   }
 
-  try {
-    readdirSync(storageDir).forEach((encodedOrigin) => {
-      const origin = encodedOrigin.replace(/\+{3}/g, "://").replace(/\^/g, ":");
+  const entries = readdirSync(storageDir);
 
-      if (!origin.includes(vintedHostname)) {
-        return;
-      }
+  entries.forEach((encodedOrigin) => {
+    const origin = encodedOrigin.replace(/\+{3}/g, "://").replace(/\^/g, ":");
 
-      const dbPath = path.join(storageDir, encodedOrigin, "ss", "data.sqlite");
+    if (!origin.includes(vintedHostname)) {
+      return;
+    }
 
-      if (existsSync(dbPath)) {
+    const dbPath = path.join(storageDir, encodedOrigin, "ss", "data.sqlite");
+
+    if (existsSync(dbPath)) {
+      try {
+        const buffer = readFileSync(dbPath);
+        const db = new SQL.Database(buffer);
         try {
-          const buffer = readFileSync(dbPath);
-          const db = new SQL.Database(buffer);
           const results = db.exec("SELECT key, value FROM data");
-          db.close();
 
           if (results.length && results[0].values.length > 0) {
             const sessionStorage: LocalStorageItem[] = results[0].values.map(
@@ -339,17 +342,15 @@ export function extractSessionStorage(
               sessionStorage,
             });
           }
-        } catch (e) {
-          console.warn(
-            `[SessionStorage] Error reading ${encodedOrigin}:`,
-            e,
-          );
+        } finally {
+          db.close();
         }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error(`[SessionStorage] Failed to read ${encodedOrigin}: ${msg}`);
       }
-    });
-  } catch (error) {
-    console.warn("[SessionStorage] Error:", error);
-  }
+    }
+  });
 
   return origins;
 }

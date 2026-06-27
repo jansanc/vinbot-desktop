@@ -61,9 +61,16 @@ const registerIPC = () => {
     if (typeof ipcHandlers.registerIPCHandlers === "function") {
       ipcHandlers.registerIPCHandlers();
       console.log("[IPC] Handlers registered successfully");
+    } else {
+      throw new Error("registerIPCHandlers is not a function in ipc-handlers module");
     }
   } catch (error) {
-    console.warn("[IPC] Warning - handlers not loaded:", error.message);
+    console.error("[IPC] Failed to register handlers:", error.message);
+    const { dialog: errorDialog } = require("electron");
+    errorDialog.showErrorBox(
+      "Initialization Error",
+      `Failed to load IPC handlers: ${error.message}\n\nThe application may not function correctly.`
+    );
   }
 };
 

@@ -72,11 +72,16 @@ function App() {
       setExtractionData(data);
 
       setState("saving");
-      await electronAPI.saveExtraction(data, "file", {
+      const saveResult = await electronAPI.saveExtraction(data, "file", {
         vintedEmail: formData.vintedEmail,
         userEmail: formData.userEmail,
         vintedMemberId: formData.vintedMemberId,
       });
+
+      if (saveResult?.warnings?.length) {
+        console.warn("Save completed with warnings:", saveResult.warnings);
+        setError(saveResult.warnings.join("; "));
+      }
 
       setState("complete");
     } catch (err) {

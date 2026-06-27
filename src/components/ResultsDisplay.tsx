@@ -16,8 +16,18 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ data, onReset }) => {
     setExpandedSection(expandedSection === section ? null : section);
   };
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
+  const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyFeedback("Copied!");
+      setTimeout(() => setCopyFeedback(null), 2000);
+    } catch (err) {
+      console.error("Failed to copy to clipboard:", err);
+      setCopyFeedback("Copy failed");
+      setTimeout(() => setCopyFeedback(null), 2000);
+    }
   };
 
   const downloadJSON = (filename: string, data: any) => {

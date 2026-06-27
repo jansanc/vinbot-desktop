@@ -12,25 +12,20 @@ async function saveToDatabase(
   userEmail: string,
   vintedMemberId: string,
 ) {
-  try {
-    const { saveFirefoxExtractionData } = await import(
-      "../modules/vinted/auth/vintedAuth.service"
-    );
-    await saveFirefoxExtractionData(
-      vintedEmail,
-      data.fingerprint,
-      {
-        cookies: data.authentication.cookies,
-        origins: data.authentication.origins,
-      },
-      userEmail,
-      vintedMemberId,
-    );
-    console.log("Successfully saved to database");
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    console.warn("Database save failed:", msg);
-  }
+  const { saveFirefoxExtractionData } = await import(
+    "../modules/vinted/auth/vintedAuth.service"
+  );
+  await saveFirefoxExtractionData(
+    vintedEmail,
+    data.fingerprint,
+    {
+      cookies: data.authentication.cookies,
+      origins: data.authentication.origins,
+    },
+    userEmail,
+    vintedMemberId,
+  );
+  console.log("Successfully saved to database");
 }
 
 async function saveToLocalFiles(data: ExtractionData) {
@@ -62,43 +57,28 @@ async function saveToLocalFiles(data: ExtractionData) {
 function registerIPCHandlers() {
   // Get available Firefox profiles
   ipcMain.handle("firefox:getProfiles", async () => {
-    try {
-      const appData = process.env.APPDATA || "";
-      const firefoxProfilesDir = path.join(
-        appData,
-        "Mozilla\\Firefox\\Profiles",
-      );
+    const appData = process.env.APPDATA || "";
+    const firefoxProfilesDir = path.join(
+      appData,
+      "Mozilla\\Firefox\\Profiles",
+    );
 
-      if (!existsSync(firefoxProfilesDir)) {
-        return [];
-      }
-
-      const profiles = readdirSync(firefoxProfilesDir);
-      return profiles.filter((f: string) => f.includes(".") || f.includes(" "));
-    } catch (error) {
-      console.error("Error getting Firefox profiles:", error);
+    if (!existsSync(firefoxProfilesDir)) {
       return [];
     }
+
+    const profiles = readdirSync(firefoxProfilesDir);
+    return profiles.filter((f: string) => f.includes(".") || f.includes(" "));
   });
 
   // Get available Chrome profiles
   ipcMain.handle("chrome:getProfiles", async () => {
-    try {
-      return getChromeProfiles();
-    } catch (error) {
-      console.error("Error getting Chrome profiles:", error);
-      return [];
-    }
+    return getChromeProfiles();
   });
 
   // Get available Edge profiles
   ipcMain.handle("edge:getProfiles", async () => {
-    try {
-      return getEdgeProfiles();
-    } catch (error) {
-      console.error("Error getting Edge profiles:", error);
-      return [];
-    }
+    return getEdgeProfiles();
   });
 
   // Extract Vinted session data
@@ -171,23 +151,37 @@ function registerIPCHandlers() {
   ipcMain.handle(
     "save:extraction",
     async (event, data, saveMethod, options) => {
-      try {
-        const { vintedEmail, userEmail, vintedMemberId } = options;
+      const { vintedEmail, userEmail, vintedMemberId } = options;
+      const warnings: string[] = [];
 
-        if (saveMethod === "database" || saveMethod === "both") {
+      if (saveMethod === "database" || saveMethod === "both") {
+        try {
           await saveToDatabase(data, vintedEmail, userEmail, vintedMemberId);
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : String(error);
+          if (saveMethod === "database") {
+            throw new Error(`Database save failed: ${msg}`);
+          }
+          warnings.push(`Database save failed: ${msg}`);
         }
-
-        if (saveMethod === "file" || saveMethod === "both") {
-          await saveToLocalFiles(data);
-        }
-
-        return { success: true };
-      } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : String(error);
-        throw new Error(`Save failed: ${errorMessage}`);
       }
+
+      if (saveMethod === "file" || saveMethod === "both") {
+        try {
+          await saveToLocalFiles(data);
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : String(error);
+          if (saveMethod === "file") {
+            throw new Error(`File save failed: ${msg}`);
+          }
+          warnings.push(`File save failed: ${msg}`);
+        }
+      }
+
+      return {
+        success: true,
+        warnings: warnings.length > 0 ? warnings : undefined,
+      };
     },
   );
 
@@ -196,6 +190,9 @@ function registerIPCHandlers() {
     const result = await dialog.showOpenDialog({
       properties: ["openDirectory"],
     });
+    if (result.canceled) {
+      return null;
+    }
     return result.filePaths[0] || null;
   });
 
@@ -209,6 +206,9 @@ function registerIPCHandlers() {
 
   // Open external links
   ipcMain.handle("open:external", async (event, url) => {
+    if (typeof url !== "string" || (!url.startsWith("https://") && !url.startsWith("http://"))) {
+      throw new Error("Invalid URL: only http and https URLs are allowed");
+    }
     const { shell } = require("electron");
     await shell.openExternal(url);
   });

@@ -26,13 +26,6 @@ export async function saveFirefoxExtractionData(
   vintedMemberId: string,
 ): Promise<void> {
   console.log("saveFirefoxExtractionData called but not implemented");
-  console.log({
-    vintedEmail,
-    userEmail,
-    vintedMemberId,
-    fingerprintKeys: Object.keys(fingerprint),
-    cookiesCount: auth.cookies.length,
-  });
 
   // TODO: Implement Supabase integration here
   // This is a placeholder for the actual database saving logic

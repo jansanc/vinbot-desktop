@@ -1,10 +1,6 @@
-console.log("[Electron] Starting...");
-
 let electron;
 try {
   electron = require("electron");
-  console.log("[Electron] Module loaded");
-  console.log("[Electron] Available exports:", Object.keys(electron).slice(0, 10));
 } catch (err) {
   console.error("[Electron] Failed to load module:", err.message);
   process.exit(1);
@@ -21,12 +17,9 @@ if (!app) {
 const path = require("path");
 const isDev = process.env.ELECTRON_DEV === "true";
 
-console.log("[Electron] Configuration - isDev:", isDev, "ELECTRON_DEV:", process.env.ELECTRON_DEV);
-
 let mainWindow;
 
 const createWindow = () => {
-  console.log("[Electron] Creating window...");
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -43,7 +36,6 @@ const createWindow = () => {
     ? "http://localhost:3000"
     : `file://${path.join(__dirname, "../build/index.html")}`;
 
-  console.log("[Electron] Loading URL:", startUrl);
   mainWindow.loadURL(startUrl);
 
   if (isDev) {
@@ -67,10 +59,7 @@ const registerIPC = () => {
   }
 };
 
-console.log("[Electron] Waiting for app ready...");
-
 app.on("ready", () => {
-  console.log("[Electron] App ready!");
   registerIPC();
   createWindow();
 });
@@ -116,7 +105,7 @@ const template = [
     submenu: [
       { role: "reload" },
       { role: "forceReload" },
-      { role: "toggleDevTools" },
+      ...(isDev ? [{ role: "toggleDevTools" }] : []),
     ],
   },
 ];
@@ -124,4 +113,4 @@ const template = [
 const menu = Menu.buildFromTemplate(template);
 Menu.setApplicationMenu(menu);
 
-console.log("[Electron] Initialization complete, waiting for app events...");
+

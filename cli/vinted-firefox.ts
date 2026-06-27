@@ -660,9 +660,7 @@ async function extractAll() {
     // Save to database if requested
     if (saveToDb && vintedEmail && userEmail) {
       try {
-        logger.info(
-          `\n   📤 Saving to database for ${vintedEmail} (linking to user: ${userEmail})...`,
-        );
+        logger.info("\n   📤 Saving to database...");
         logger.info(
           `   📋 Data to save: fingerprint (${Object.keys(fingerprint).length} fields), ${auth.cookies.length} cookies, ${auth.origins.length} origins`,
         );

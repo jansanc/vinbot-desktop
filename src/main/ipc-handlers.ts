@@ -107,11 +107,31 @@ function registerIPCHandlers() {
       const { browser, profile, vintedBaseUrl } = options;
       const appData = process.env.APPDATA || "";
 
+      // Validate vintedBaseUrl is a legitimate Vinted URL
+      if (typeof vintedBaseUrl === "string" && vintedBaseUrl.length > 0) {
+        let parsedBase: URL;
+        try {
+          parsedBase = new URL(vintedBaseUrl);
+        } catch {
+          throw new Error("Invalid Vinted base URL");
+        }
+        if (parsedBase.protocol !== "https:" && parsedBase.protocol !== "http:") {
+          throw new Error("Vinted base URL must use http or https");
+        }
+        if (!parsedBase.hostname.includes("vinted")) {
+          throw new Error("Vinted base URL must be a vinted domain");
+        }
+      }
+
       if (browser === "firefox") {
         const firefoxProfilesDir = path.join(
           appData,
           "Mozilla\\Firefox\\Profiles",
         );
+        // Prevent path traversal: profile name must not contain path separators
+        if (typeof profile === "string" && (profile.includes("/") || profile.includes("\\") || profile.includes(".."))) {
+          throw new Error("Invalid profile name");
+        }
         const profilePath = path.join(firefoxProfilesDir, profile);
         const extractedData = await extractFirefoxProfileData(
           profilePath,
@@ -207,8 +227,20 @@ function registerIPCHandlers() {
     };
   });
 
-  // Open external links
+  // Open external links (restrict to safe protocols)
   ipcMain.handle("open:external", async (event, url) => {
+    if (typeof url !== "string") {
+      throw new Error("Invalid URL");
+    }
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      throw new Error("Invalid URL");
+    }
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+      throw new Error("Only http and https URLs are allowed");
+    }
     const { shell } = require("electron");
     await shell.openExternal(url);
   });

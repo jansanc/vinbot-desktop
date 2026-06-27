@@ -4,11 +4,23 @@
 import * as dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
-import os from "os";
-import { execSync } from "child_process";
 import { createRequire } from "module";
 import readline from "readline";
-import { readFileSync, existsSync, readdirSync, writeFileSync, mkdirSync } from "fs";
+import { writeFileSync, mkdirSync, existsSync } from "fs";
+
+import {
+  getFirefoxProfilesDir,
+  listFirefoxProfiles,
+} from "../src/shared/browser-profiles";
+import { extractFingerprint } from "../src/shared/firefox-utils";
+import { convertValue, getErrorMessage } from "../src/shared/vinted-utils";
+import type { SqlJsStatic } from "../src/shared/sql-types";
+import type { Cookie, StorageOrigin } from "../src/types";
+import {
+  extractCookies,
+  extractLocalStorage,
+  extractSessionStorage,
+} from "../src/shared/storage-extraction";
 
 // Setup paths and load env
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -51,8 +63,7 @@ const VINTED_BASE_URL = process.env.VINTED_BASE_URL || "https://www.vinted.com";
 // ============================================================================
 
 function findFirefoxProfile(): string {
-  const appData = process.env.APPDATA || "";
-  const firefoxProfilesDir = path.join(appData, "Mozilla\\Firefox\\Profiles");
+  const firefoxProfilesDir = getFirefoxProfilesDir();
 
   // Allow override via env variable or command line arg
   if (process.env.FIREFOX_PROFILE) {
@@ -66,10 +77,7 @@ function findFirefoxProfile(): string {
   }
 
   try {
-    const profiles = readdirSync(firefoxProfilesDir);
-    const profileDirs = profiles.filter(
-      (f: string) => f.includes(".") || f.includes(" "),
-    );
+    const profileDirs = listFirefoxProfiles();
 
     if (profileDirs.length === 0) {
       throw new Error("No Firefox profiles found");
@@ -91,402 +99,18 @@ function findFirefoxProfile(): string {
     return profilePath;
   } catch (error) {
     throw new Error(
-      `Could not find Firefox profile: ${error instanceof Error ? error.message : String(error)}`,
+      `Could not find Firefox profile: ${getErrorMessage(error)}`,
     );
   }
-}
-
-// ============================================================================
-// FINGERPRINT EXTRACTION
-// ============================================================================
-
-function parseFirefoxPrefs(profilePath: string): Record<string, any> {
-  try {
-    const prefsPath = path.join(profilePath, "prefs.js");
-    const content = readFileSync(prefsPath, "utf-8");
-
-    const prefs: Record<string, any> = {};
-    const regex = /user_pref\("([^"]+)",\s*(.+?)\);/g;
-    let match;
-
-    while ((match = regex.exec(content)) !== null) {
-      const key = match[1];
-      let value: any = match[2];
-
-      if (value === "true") value = true;
-      else if (value === "false") value = false;
-      else if (!isNaN(Number(value))) value = Number(value);
-      else if (value.startsWith('"') && value.endsWith('"')) {
-        value = value.slice(1, -1);
-      }
-
-      prefs[key] = value;
-    }
-
-    return prefs;
-  } catch (error) {
-    logger.warn(
-      `Could not read prefs.js: ${error instanceof Error ? error.message : "unknown"}`,
-    );
-    return {};
-  }
-}
-
-function getFirefoxVersion(): string {
-  try {
-    // Suppress stderr on Windows since Firefox might not be in PATH
-    const output = execSync("firefox --version", {
-      encoding: "utf-8",
-      stdio: ["pipe", "pipe", "ignore"], // Suppress stderr
-    });
-    return output.trim();
-  } catch {
-    return "Firefox (version unknown)";
-  }
-}
-
-function getDefaultFonts(): string[] {
-  const baseFonts = [
-    "Arial",
-    "Helvetica",
-    "Times New Roman",
-    "Courier New",
-    "Verdana",
-    "Georgia",
-    "Palatino",
-    "Calibri",
-    "Cambria",
-    "Consolas",
-  ];
-
-  if (process.platform === "win32") {
-    baseFonts.push("Segoe UI", "Tahoma", "Trebuchet MS");
-  }
-
-  return baseFonts;
-}
-
-async function extractFingerprint(profilePath: string) {
-  logger.info("\n📊 Extracting browser fingerprint...");
-
-  const prefs = parseFirefoxPrefs(profilePath);
-  const acceptLanguages = String(prefs["intl.accept_languages"] || "en-GB");
-  const localeString = String(prefs["general.useragent.locale"] || "en-GB");
-
-  const platform = os.platform();
-  const platformString =
-    platform === "win32"
-      ? "Win32"
-      : platform === "darwin"
-        ? "MacIntel"
-        : "Linux x86_64";
-  const cpuCount = os.cpus().length;
-  const totalMem = Math.round(os.totalmem() / (1024 * 1024 * 1024));
-
-  const fingerprint = {
-    extractedAt: new Date().toISOString(),
-    browser: "Firefox",
-    source: "Extracted from Firefox profile and system settings",
-    userAgent: `Mozilla/5.0 (${platformString}) AppleWebKit/537.36 (KHTML, like Gecko) Firefox/120.0`,
-    language: acceptLanguages.split(",")[0] || "en-GB",
-    languages: acceptLanguages.split(",").map((l: string) => l.trim()),
-    platform: platformString,
-    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    locale: localeString,
-    screen: {
-      width: 1920,
-      height: 1080,
-      colorDepth: 24,
-    },
-    hardwareConcurrency: cpuCount,
-    deviceMemory: totalMem,
-    installedFonts: getDefaultFonts(),
-    plugins: [
-      { name: "PDF Viewer", description: "Portable Document Format" },
-    ],
-    systemInfo: {
-      platform,
-      arch: os.arch(),
-      firefoxVersion: getFirefoxVersion(),
-    },
-  };
-
-  return fingerprint;
 }
 
 // ============================================================================
 // AUTHENTICATION EXTRACTION
 // ============================================================================
 
-interface SqlJsDatabase {
-  exec(sql: string): Array<{ columns: string[]; values: unknown[][] }>;
-  close(): void;
-}
-
-interface SqlJsStatic {
-  Database: new (buffer: Buffer) => SqlJsDatabase;
-}
-
-interface Cookie {
-  name: string;
-  value: string;
-  domain: string;
-  path: string;
-  expires?: number;
-  httpOnly: boolean;
-  secure: boolean;
-  sameSite: string;
-}
-
-interface LocalStorageItem {
-  name: string;
-  value: string;
-}
-
-interface StorageOrigin {
-  origin: string;
-  localStorage?: LocalStorageItem[];
-  sessionStorage?: LocalStorageItem[];
-}
-
-interface VintedCookie {
-  name: string;
-  value: string;
-  domain: string;
-  path: string;
-  expires?: number;
-  httpOnly: boolean;
-  secure: boolean;
-  sameSite: string;
-}
-
-interface VintedOrigin {
-  origin: string;
-  localStorage?: LocalStorageItem[];
-  sessionStorage?: LocalStorageItem[];
-}
-
-function getVintedHostname(): string {
-  try {
-    const url = new URL(VINTED_BASE_URL);
-    return url.hostname.replace(/^www\./, "");
-  } catch {
-    return "vinted.com";
-  }
-}
-
-function normalizeCookieDomain(domain: string): string {
-  let normalized = domain.toLowerCase().trim();
-  if (normalized.startsWith(".www.")) {
-    normalized = normalized.replace(/^\.www\./, ".");
-  } else if (normalized === "www.vinted.es") {
-    normalized = ".vinted.es";
-  }
-  return normalized;
-}
-
-function isAuthRelatedStorage(key: string): boolean {
-  if (key.match(/^[a-f0-9]{64,}$/) !== null) {
-    return false;
-  }
-  const authKeywords = [
-    "session",
-    "token",
-    "auth",
-    "user",
-    "refresh",
-    "access",
-  ];
-  return authKeywords.some((k) => key.toLowerCase().includes(k));
-}
-
-function convertValue(value: unknown): string {
-  if (typeof value === "string") {
-    return value;
-  }
-  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-    const keys = Object.keys(value as Record<string, unknown>);
-    const allNumeric =
-      keys.length > 0 && keys.every((k) => !isNaN(parseInt(k)));
-    if (allNumeric) {
-      const charCodes = keys
-        .sort((a, b) => parseInt(a) - parseInt(b))
-        .map((key) => (value as Record<string, number>)[key]);
-      try {
-        return String.fromCharCode(...charCodes);
-      } catch {
-        return JSON.stringify(value);
-      }
-    }
-  }
-  return typeof value === "string" ? value : JSON.stringify(value);
-}
-
-function extractCookies(profilePath: string, SQL: SqlJsStatic): VintedCookie[] {
-  const dbPath = path.join(profilePath, "cookies.sqlite");
-  const vintedHostname = getVintedHostname();
-
-  if (!existsSync(dbPath)) {
-    logger.warn("   cookies.sqlite not found");
-    return [];
-  }
-
-  try {
-    const buffer = readFileSync(dbPath);
-    const db = new SQL.Database(buffer);
-    const results = db.exec(
-      "SELECT name, value, host, path, isSecure, isHttpOnly, sameSite, expiry FROM moz_cookies",
-    );
-
-    if (!results.length) {
-      return [];
-    }
-
-    db.close();
-    const sameSiteMap: Record<number, string> = { 0: "None", 1: "Lax", 2: "Strict" };
-
-    return results[0].values
-      .filter(([, , host]) => {
-        const hostStr = (host as string || "").toLowerCase();
-        return hostStr.includes(vintedHostname);
-      })
-      .map(
-        ([name, value, host, pathVal, secure, httpOnly, sameSite, expiry]) => ({
-          name: (name as string) || "",
-          value: (value as string) || "",
-          domain: normalizeCookieDomain((host as string) || ""),
-          path: (pathVal as string) || "/",
-          expires: expiry ? Math.floor((expiry as number) / 1000) : undefined,
-          httpOnly: (httpOnly as number) === 1,
-          secure: (secure as number) === 1,
-          sameSite: ["Strict", "Lax", "None"].includes(sameSite as string)
-            ? (sameSite as string)
-            : sameSiteMap[sameSite as number] || "None",
-        } as VintedCookie),
-      );
-  } catch (error) {
-    logger.warn(
-      `   Error: ${error instanceof Error ? error.message : String(error)}`,
-    );
-    return [];
-  }
-}
-
-function extractLocalStorage(profilePath: string, SQL: SqlJsStatic): StorageOrigin[] {
-  const storageDir = path.join(profilePath, "storage", "default");
-  const origins: StorageOrigin[] = [];
-  const vintedHostname = getVintedHostname();
-
-  if (!existsSync(storageDir)) {
-    return [];
-  }
-
-  try {
-    readdirSync(storageDir).forEach((encodedOrigin) => {
-      const origin = encodedOrigin.replace(/\+{3}/g, "://").replace(/\^/g, ":");
-
-      if (!origin.includes(vintedHostname)) {
-        return;
-      }
-
-      const dbPath = path.join(storageDir, encodedOrigin, "ls", "data.sqlite");
-
-      if (existsSync(dbPath)) {
-        try {
-          const buffer = readFileSync(dbPath);
-          const db = new SQL.Database(buffer);
-          const results = db.exec("SELECT key, value FROM data");
-          db.close();
-
-          if (results.length && results[0].values.length > 0) {
-            const localStorage: LocalStorageItem[] = results[0].values
-              .filter(([key]) => isAuthRelatedStorage(key as string))
-              .map(([key, value]) => ({
-                name: key as string,
-                value: convertValue(value),
-              }));
-
-            if (localStorage.length > 0) {
-              origins.push({
-                origin,
-                localStorage,
-              });
-            }
-          }
-        } catch (e) {
-          logger.warn(
-            `   Error reading ${encodedOrigin}: ${e instanceof Error ? e.message : String(e)}`,
-          );
-        }
-      }
-    });
-  } catch (error) {
-    logger.warn(
-      `   Error: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
-
-  return origins;
-}
-
-function extractSessionStorage(profilePath: string, SQL: SqlJsStatic): StorageOrigin[] {
-  const storageDir = path.join(profilePath, "storage", "default");
-  const origins: StorageOrigin[] = [];
-  const vintedHostname = getVintedHostname();
-
-  if (!existsSync(storageDir)) {
-    return [];
-  }
-
-  try {
-    readdirSync(storageDir).forEach((encodedOrigin) => {
-      const origin = encodedOrigin.replace(/\+{3}/g, "://").replace(/\^/g, ":");
-
-      if (!origin.includes(vintedHostname)) {
-        return;
-      }
-
-      const dbPath = path.join(storageDir, encodedOrigin, "ss", "data.sqlite");
-
-      if (existsSync(dbPath)) {
-        try {
-          const buffer = readFileSync(dbPath);
-          const db = new SQL.Database(buffer);
-          const results = db.exec("SELECT key, value FROM data");
-          db.close();
-
-          if (results.length && results[0].values.length > 0) {
-            const sessionStorage: LocalStorageItem[] = results[0].values.map(
-              ([key, value]) => ({
-                name: key as string,
-                value: convertValue(value),
-              }),
-            );
-
-            origins.push({
-              origin,
-              sessionStorage,
-            });
-          }
-        } catch (e) {
-          logger.warn(
-            `   Error reading sessionStorage ${encodedOrigin}: ${e instanceof Error ? e.message : String(e)}`,
-          );
-        }
-      }
-    });
-  } catch (error) {
-    logger.warn(
-      `   Error: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
-
-  return origins;
-}
-
 async function extractAuthentication(
   profilePath: string,
-): Promise<{ cookies: VintedCookie[]; origins: VintedOrigin[] }> {
+): Promise<{ cookies: Cookie[]; origins: StorageOrigin[] }> {
   logger.info("\n🔐 Extracting authentication session...");
 
   try {
@@ -494,11 +118,11 @@ async function extractAuthentication(
     const SQL: SqlJsStatic = await initSqlJs();
 
     logger.info("   Reading cookies...");
-    const cookies = extractCookies(profilePath, SQL);
+    const cookies = extractCookies(profilePath, SQL, VINTED_BASE_URL);
     logger.info(`   ✓ ${cookies.length} cookies found`);
 
     logger.info("   Reading localStorage...");
-    let origins = extractLocalStorage(profilePath, SQL);
+    let origins = extractLocalStorage(profilePath, SQL, VINTED_BASE_URL);
     logger.info(`   ✓ ${origins.length} origins found`);
 
     origins.forEach((origin) => {
@@ -510,7 +134,7 @@ async function extractAuthentication(
     });
 
     logger.info("   Reading sessionStorage...");
-    const sessionOrigins = extractSessionStorage(profilePath, SQL);
+    const sessionOrigins = extractSessionStorage(profilePath, SQL, VINTED_BASE_URL);
     sessionOrigins.forEach((sOrigin) => {
       const existing = origins.find((o) => o.origin === sOrigin.origin);
       if (existing) {
@@ -521,23 +145,16 @@ async function extractAuthentication(
     });
     logger.info("   ✓ sessionStorage processed");
 
-    const storageState: { cookies: VintedCookie[]; origins: VintedOrigin[] } = {
-      cookies,
-      origins: origins as VintedOrigin[],
-    };
-
-    return storageState;
+    return { cookies, origins };
   } catch (error) {
     if (
       error instanceof Error &&
       "code" in error &&
-      error.code === "MODULE_NOT_FOUND"
+      (error as NodeJS.ErrnoException).code === "MODULE_NOT_FOUND"
     ) {
       logger.error("Install sql.js first: npm install sql.js");
     } else {
-      logger.error(
-        `Error: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      logger.error(`Error: ${getErrorMessage(error)}`);
     }
     throw error;
   }
@@ -581,6 +198,7 @@ async function extractAll() {
     const profilePath = findFirefoxProfile();
 
     // Extract fingerprint
+    logger.info("\n📊 Extracting browser fingerprint...");
     const fingerprint = await extractFingerprint(profilePath);
 
     // Extract authentication
@@ -677,7 +295,7 @@ async function extractAll() {
 
         // Dynamically import to avoid loading config at startup
         const { saveFirefoxExtractionData } = await import(
-          "../modules/vinted/auth/vintedAuth.service.ts"
+          "../src/modules/vinted/auth/vintedAuth.service.ts"
         );
         await saveFirefoxExtractionData(vintedEmail, fingerprint, auth, userEmail, vintedMemberId);
         logger.success(`   ✓ Fingerprint stored (${Object.keys(fingerprint).length} properties)`);
@@ -685,7 +303,7 @@ async function extractAll() {
         logger.success(`   ✓ Origins stored (${auth.origins.length} total)`);
       } catch (dbError) {
         logger.error(
-          `   ❌ Could not save to database: ${dbError instanceof Error ? dbError.message : String(dbError)}`,
+          `   ❌ Could not save to database: ${getErrorMessage(dbError)}`,
         );
       }
     }
@@ -723,7 +341,7 @@ async function extractAll() {
         );
       } catch (fileError) {
         logger.error(
-          `   ❌ Could not save to file: ${fileError instanceof Error ? fileError.message : String(fileError)}`,
+          `   ❌ Could not save to file: ${getErrorMessage(fileError)}`,
         );
       }
     }
@@ -750,7 +368,7 @@ async function extractAll() {
     logger.info("\n" + "=".repeat(70));
   } catch (error) {
     logger.error(
-      `Unhandled error: ${error instanceof Error ? error.message : String(error)}`,
+      `Unhandled error: ${getErrorMessage(error)}`,
     );
     process.exit(1);
   }
@@ -758,6 +376,3 @@ async function extractAll() {
 
 // Run extraction
 extractAll();
-
-
-

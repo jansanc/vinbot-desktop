@@ -1,9 +1,13 @@
 import { ipcMain, dialog, app } from "electron";
 import path from "path";
-import os from "os";
-import { readFileSync, existsSync, readdirSync, writeFileSync, mkdirSync } from "fs";
+import { writeFileSync, mkdirSync } from "fs";
 import { extractFirefoxProfileData } from "./extractors/firefox.extractor";
 import { getChromeProfiles, getEdgeProfiles } from "./extractors/chrome.extractor";
+import {
+  getFirefoxProfilesDir,
+  listFirefoxProfiles,
+} from "../shared/browser-profiles";
+import { getErrorMessage } from "../shared/vinted-utils";
 import type { ExtractionData } from "../types";
 
 async function saveToDatabase(
@@ -28,8 +32,7 @@ async function saveToDatabase(
     );
     console.log("Successfully saved to database");
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    console.warn("Database save failed:", msg);
+    console.warn("Database save failed:", getErrorMessage(error));
   }
 }
 
@@ -56,32 +59,29 @@ async function saveToLocalFiles(data: ExtractionData) {
   console.log(`Files saved to: ${authDir}`);
 }
 
+function getFirefoxFallbackData(vintedBaseUrl: string) {
+  const profilesDir = getFirefoxProfilesDir();
+  const profiles = listFirefoxProfiles();
+  if (profiles.length === 0) {
+    throw new Error("No Firefox profiles found for fallback");
+  }
+  const profilePath = path.join(profilesDir, profiles[0]);
+  return extractFirefoxProfileData(profilePath, vintedBaseUrl);
+}
+
 /**
  * Register all IPC handlers for the Electron main process
  */
 function registerIPCHandlers() {
-  // Get available Firefox profiles
   ipcMain.handle("firefox:getProfiles", async () => {
     try {
-      const appData = process.env.APPDATA || "";
-      const firefoxProfilesDir = path.join(
-        appData,
-        "Mozilla\\Firefox\\Profiles",
-      );
-
-      if (!existsSync(firefoxProfilesDir)) {
-        return [];
-      }
-
-      const profiles = readdirSync(firefoxProfilesDir);
-      return profiles.filter((f: string) => f.includes(".") || f.includes(" "));
+      return listFirefoxProfiles();
     } catch (error) {
       console.error("Error getting Firefox profiles:", error);
       return [];
     }
   });
 
-  // Get available Chrome profiles
   ipcMain.handle("chrome:getProfiles", async () => {
     try {
       return getChromeProfiles();
@@ -91,7 +91,6 @@ function registerIPCHandlers() {
     }
   });
 
-  // Get available Edge profiles
   ipcMain.handle("edge:getProfiles", async () => {
     try {
       return getEdgeProfiles();
@@ -101,73 +100,23 @@ function registerIPCHandlers() {
     }
   });
 
-  // Extract Vinted session data
   ipcMain.handle("extract:vinted:session", async (event, options) => {
     try {
       const { browser, profile, vintedBaseUrl } = options;
-      const appData = process.env.APPDATA || "";
 
       if (browser === "firefox") {
-        const firefoxProfilesDir = path.join(
-          appData,
-          "Mozilla\\Firefox\\Profiles",
-        );
-        const profilePath = path.join(firefoxProfilesDir, profile);
-        const extractedData = await extractFirefoxProfileData(
-          profilePath,
-          vintedBaseUrl,
-        );
-        return extractedData;
-      } else if (browser === "chrome") {
-        // For Chrome/Edge, we'll extract Firefox data for now
-        // Full Chrome/Edge extraction can be implemented later
-        console.log("[Chrome] Profile extraction requested:", profile);
-        const firefoxProfilesDir = path.join(
-          appData,
-          "Mozilla\\Firefox\\Profiles",
-        );
-        const profiles = readdirSync(firefoxProfilesDir).filter(
-          (f: string) => f.includes(".") || f.includes(" "),
-        );
-        if (profiles.length === 0) {
-          throw new Error("No Firefox profiles found for fallback");
-        }
-        const profilePath = path.join(firefoxProfilesDir, profiles[0]);
-        const extractedData = await extractFirefoxProfileData(
-          profilePath,
-          vintedBaseUrl,
-        );
-        return extractedData;
-      } else if (browser === "edge") {
-        // Same fallback for Edge
-        console.log("[Edge] Profile extraction requested:", profile);
-        const firefoxProfilesDir = path.join(
-          appData,
-          "Mozilla\\Firefox\\Profiles",
-        );
-        const profiles = readdirSync(firefoxProfilesDir).filter(
-          (f: string) => f.includes(".") || f.includes(" "),
-        );
-        if (profiles.length === 0) {
-          throw new Error("No Firefox profiles found for fallback");
-        }
-        const profilePath = path.join(firefoxProfilesDir, profiles[0]);
-        const extractedData = await extractFirefoxProfileData(
-          profilePath,
-          vintedBaseUrl,
-        );
-        return extractedData;
+        const profilesDir = getFirefoxProfilesDir();
+        const profilePath = path.join(profilesDir, profile);
+        return await extractFirefoxProfileData(profilePath, vintedBaseUrl);
       }
 
-      throw new Error(`Unsupported browser: ${browser}`);
+      console.log(`[${browser}] Profile extraction requested:`, profile);
+      return await getFirefoxFallbackData(vintedBaseUrl);
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      throw new Error(`Extraction failed: ${errorMessage}`);
+      throw new Error(`Extraction failed: ${getErrorMessage(error)}`);
     }
   });
 
-  // Save extraction data
   ipcMain.handle(
     "save:extraction",
     async (event, data, saveMethod, options) => {
@@ -184,14 +133,11 @@ function registerIPCHandlers() {
 
         return { success: true };
       } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : String(error);
-        throw new Error(`Save failed: ${errorMessage}`);
+        throw new Error(`Save failed: ${getErrorMessage(error)}`);
       }
     },
   );
 
-  // Select directory dialog
   ipcMain.handle("dialog:selectDirectory", async () => {
     const result = await dialog.showOpenDialog({
       properties: ["openDirectory"],
@@ -199,15 +145,12 @@ function registerIPCHandlers() {
     return result.filePaths[0] || null;
   });
 
-  // Validate Vinted credentials
   ipcMain.handle("vinted:validate", async (event, email, memberId) => {
-    // Simple validation
     return {
       isValid: email.includes("@") && /^\d+$/.test(memberId),
     };
   });
 
-  // Open external links
   ipcMain.handle("open:external", async (event, url) => {
     const { shell } = require("electron");
     await shell.openExternal(url);

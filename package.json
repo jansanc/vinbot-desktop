@@ -12,7 +12,7 @@
     "react-build": "react-scripts build",
     "react-test": "react-scripts test",
     "react-eject": "react-scripts eject",
-    "electron-dev": "npm run compile:main && concurrently \"npm run react-start\" \"wait-on http://localhost:3000 && cross-env ELECTRON_DEV=true electron .\"",
+    "electron-dev": "npm run compile:main && concurrently \"cross-env PORT=3002 npm run react-start\" \"wait-on http://localhost:3002 && cross-env ELECTRON_DEV=true electron .\"",
     "electron-build": "npm run compile:main && npm run react-build && electron-builder",
     "build": "npm run react-build",
     "start": "npm run electron-dev",

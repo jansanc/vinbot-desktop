@@ -5,6 +5,8 @@ export type ExtractionState =
   | "complete"
   | "error";
 
+export type AuthState = "unauthenticated" | "authenticating" | "authenticated" | "error";
+
 export interface Fingerprint {
   extractedAt: string;
   browser: string;

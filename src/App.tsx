@@ -3,9 +3,18 @@ import "./App.css";
 import ExtractionForm from "./components/ExtractionForm";
 import ProgressDisplay from "./components/ProgressDisplay";
 import ResultsDisplay from "./components/ResultsDisplay";
-import { ExtractionState, ExtractionData } from "./types";
+import LoginForm from "./components/LoginForm";
+import UserProfile from "./components/UserProfile";
+import { ExtractionState, ExtractionData, AuthState } from "./types";
+import { AuthService, AuthUser } from "./services/auth.service";
 
 function App() {
+  const [authState, setAuthState] = useState<AuthState>("unauthenticated");
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [authError, setAuthError] = useState<string>("");
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
   const [state, setState] = useState<ExtractionState>("idle");
   const [extractionData, setExtractionData] = useState<ExtractionData | null>(
     null,
@@ -15,6 +24,17 @@ function App() {
   const [loadingProfiles, setLoadingProfiles] = useState(true);
 
   useEffect(() => {
+    // Check for existing session on mount
+    const existingUser = AuthService.getUser();
+    const existingSession = AuthService.getSession();
+
+    if (existingUser && existingSession && AuthService.isSessionValid()) {
+      setUser(existingUser);
+      setAuthState("authenticated");
+    } else {
+      AuthService.clearSession();
+    }
+
     // Load Firefox profiles on mount
     loadProfilesForBrowser("firefox");
   }, []);
@@ -93,6 +113,52 @@ function App() {
     setError("");
   };
 
+  const handleLogin = async (email: string, password: string) => {
+    setIsAuthenticating(true);
+    setAuthError("");
+
+    try {
+      const { user: loggedInUser } = await AuthService.login(email, password);
+      setUser(loggedInUser);
+      setAuthState("authenticated");
+    } catch (err) {
+      const errorMessage =
+        err instanceof Error ? err.message : "Login failed";
+      setAuthError(errorMessage);
+      setAuthState("error");
+    } finally {
+      setIsAuthenticating(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      await AuthService.logout();
+      setUser(null);
+      setAuthState("unauthenticated");
+      setAuthError("");
+    } catch (err) {
+      console.error("Logout failed:", err);
+      setUser(null);
+      setAuthState("unauthenticated");
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
+
+  // Show login form if not authenticated
+  if (authState !== "authenticated" || !user) {
+    return (
+      <LoginForm
+        onSubmit={handleLogin}
+        isLoading={isAuthenticating}
+        error={authError}
+      />
+    );
+  }
+
+  // Show user profile and extraction tools if authenticated
   return (
     <div className="App">
       <header className="app-header">
@@ -101,6 +167,12 @@ function App() {
       </header>
 
       <main className="app-main">
+        <UserProfile
+          user={user}
+          onLogout={handleLogout}
+          isLoggingOut={isLoggingOut}
+        />
+
         {state === "idle" && (
           <ExtractionForm
             onSubmit={handleExtraction}

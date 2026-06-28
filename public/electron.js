@@ -1,20 +1,17 @@
 console.log("[Electron] Starting...");
 
-let electron;
+let app, BrowserWindow, Menu;
 try {
-  electron = require("electron");
-  console.log("[Electron] Module loaded");
-  console.log("[Electron] Available exports:", Object.keys(electron).slice(0, 10));
+  const electron = require("electron");
+  app = electron.app;
+  BrowserWindow = electron.BrowserWindow;
+  Menu = electron.Menu;
+  console.log("[Electron] Module loaded successfully");
+  if (!app) {
+    throw new Error("Failed to get app from electron module");
+  }
 } catch (err) {
   console.error("[Electron] Failed to load module:", err.message);
-  process.exit(1);
-}
-
-const { app, BrowserWindow, Menu } = electron;
-
-if (!app) {
-  console.error("[Electron] app is undefined!");
-  console.error("[Electron] electron object:", electron);
   process.exit(1);
 }
 
@@ -40,7 +37,7 @@ const createWindow = () => {
   });
 
   const startUrl = isDev
-    ? "http://localhost:3000"
+    ? "http://localhost:3002"
     : `file://${path.join(__dirname, "../build/index.html")}`;
 
   console.log("[Electron] Loading URL:", startUrl);

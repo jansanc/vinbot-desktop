@@ -27,8 +27,33 @@ export interface AuthUser {
 }
 
 const STORAGE_KEYS = config.storage.keys;
+const VALID_SUBSCRIPTION_TIERS = ["basic", "pro", "enterprise"];
 
 export class AuthService {
+  static isValidSubscriptionTier(tier: string | null): boolean {
+    // Reject null, undefined, or empty values
+    if (!tier || typeof tier !== "string") {
+      console.warn(`[Auth] ❌ Invalid subscription tier: type=${typeof tier}, value="${tier}"`);
+      return false;
+    }
+
+    console.log(`[Auth] Subscription tier validation: input="${tier}", type="${typeof tier}"`);
+
+    const normalizedTier = tier.trim().toLowerCase();
+    console.log(`[Auth] After normalization: "${normalizedTier}"`);
+
+    // Explicitly check if tier is in the valid list
+    const isValid = normalizedTier === "basic" || normalizedTier === "pro" || normalizedTier === "enterprise";
+
+    console.log(`[Auth] Validation result: ${isValid ? "✅ PASS" : "❌ FAIL"} (valid=${isValid})`);
+
+    if (!isValid) {
+      console.error(`[Auth] ❌ REJECTED: "${tier}" → normalized: "${normalizedTier}". Valid tiers: basic, pro, enterprise`);
+    }
+
+    return isValid;
+  }
+
   static async login(
     email: string,
     password: string
@@ -44,6 +69,64 @@ export class AuthService {
 
     if (!session?.accessToken) {
       throw new Error("Server did not return access token");
+    }
+
+    console.log(`[Auth] Login response subscription tier: "${user.subscriptionTier}"`);
+
+    if (!this.isValidSubscriptionTier(user.subscriptionTier)) {
+      throw new Error(
+        `You cannot login because you don't have an active subscription. Please upgrade your account to continue.`
+      );
+    }
+
+    // Verify subscription tier with /auth/me endpoint - this is mandatory
+    console.log("[Auth] Verifying subscription tier with /auth/me endpoint...");
+    try {
+      const meResponse = await ApiService.getCurrentUser(session.accessToken);
+
+      console.log("[Auth] Full /auth/me response:", {
+        status: meResponse.status,
+        message: meResponse.message,
+        hasData: !!meResponse.data,
+        dataKeys: meResponse.data ? Object.keys(meResponse.data) : [],
+      });
+
+      const meUser = meResponse.data?.user || meResponse.data;
+
+      if (!meUser) {
+        console.error("[Auth] /auth/me response structure:", JSON.stringify(meResponse, null, 2));
+        throw new Error("Failed to retrieve user data from /auth/me endpoint");
+      }
+
+      // Debug: Log subscription tier details
+      console.log("[Auth] /auth/me user data:", {
+        id: meUser.id,
+        email: meUser.email,
+        subscriptionTier: meUser.subscriptionTier,
+        subscriptionTierType: typeof meUser.subscriptionTier,
+        subscriptionTierLength: meUser.subscriptionTier?.length,
+        subscriptionTierCharCodes: meUser.subscriptionTier ? meUser.subscriptionTier.split('').map((c: string) => c.charCodeAt(0)) : [],
+      });
+
+      const tierToValidate = meUser.subscriptionTier;
+      console.log(`[Auth] Validating subscription tier: "${tierToValidate}"`);
+
+      if (!this.isValidSubscriptionTier(tierToValidate)) {
+        console.error(`[Auth] ❌ REJECTED: "${tierToValidate}" is not a valid subscription tier`);
+        throw new Error(
+          `You cannot login because you don't have an active subscription. Please upgrade your account to continue.`
+        );
+      }
+
+      console.log("[Auth] ✅ Subscription tier verified successfully");
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error("[Auth] Subscription tier verification failed:", errorMessage);
+      throw new Error(
+        errorMessage.includes("active subscription") || errorMessage.includes("don't have")
+          ? errorMessage
+          : `Failed to verify account access. ${errorMessage}`
+      );
     }
 
     // Store in localStorage
@@ -102,6 +185,11 @@ export class AuthService {
     const session = this.getSession();
     if (!session) return false;
 
+    const user = this.getUser();
+    if (!user || !this.isValidSubscriptionTier(user.subscriptionTier)) {
+      return false;
+    }
+
     const now = Date.now();
     return now < session.expiresAt * 1000;
   }
@@ -140,8 +228,22 @@ export class AuthService {
         return null;
       }
 
+      // Validate subscription tier from refresh response
+      const refreshedUser = response.data?.user;
+      if (refreshedUser && !this.isValidSubscriptionTier(refreshedUser.subscriptionTier)) {
+        console.error("[Auth] User subscription tier became invalid during refresh, clearing session");
+        this.clearSession();
+        return null;
+      }
+
       const newSession = response.data.session;
       this.saveSession(newSession);
+
+      // Update user data if provided
+      if (refreshedUser) {
+        this.saveUser(refreshedUser);
+      }
+
       return newSession;
     } catch (error) {
       console.error("Failed to refresh session:", error);

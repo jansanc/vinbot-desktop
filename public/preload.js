@@ -16,4 +16,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   validateVintedCredentials: (email, memberId) =>
     ipcRenderer.invoke("vinted:validate", email, memberId),
   openExternalLink: (url) => ipcRenderer.invoke("open:external", url),
+  openBrowserWithProfile: (browser, profile) =>
+    ipcRenderer.invoke("browser:open", browser, profile),
 });

@@ -19,20 +19,6 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ data, onReset }) => {
     navigator.clipboard.writeText(text);
   };
 
-  const downloadJSON = (filename: string, data: any) => {
-    const element = document.createElement("a");
-    element.setAttribute(
-      "href",
-      "data:text/json;charset=utf-8," +
-        encodeURIComponent(JSON.stringify(data, null, 2)),
-    );
-    element.setAttribute("download", filename);
-    element.style.display = "none";
-    document.body.appendChild(element);
-    element.click();
-    document.body.removeChild(element);
-  };
-
   return (
     <div className="results-container">
       <div className="results-card">
@@ -247,22 +233,6 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ data, onReset }) => {
         </div>
 
         <div className="results-actions">
-          <button
-            className="btn btn-secondary"
-            onClick={() =>
-              downloadJSON("vinted-fingerprint.json", data.fingerprint)
-            }
-          >
-            💾 Download Fingerprint
-          </button>
-          <button
-            className="btn btn-secondary"
-            onClick={() =>
-              downloadJSON("vinted-auth-session.json", data.authentication)
-            }
-          >
-            💾 Download Auth Data
-          </button>
           <button className="btn btn-primary" onClick={onReset}>
             🔄 New Extraction
           </button>

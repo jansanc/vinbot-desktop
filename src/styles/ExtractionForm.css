@@ -2,11 +2,25 @@
 
 .extraction-form-container {
   min-height: 100vh;
-  background-color: hsl(var(--muted) / 0.4);
+  background: linear-gradient(135deg, rgb(249, 250, 251) 0%, rgb(240, 244, 249) 100%);
   padding-left: 1rem;
   padding-right: 1rem;
   padding-top: 2.5rem;
   padding-bottom: 2.5rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.extraction-form-container::before {
+  content: '';
+  position: absolute;
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.1) 0%, transparent 70%);
+  border-radius: 50%;
+  top: -100px;
+  right: -100px;
+  pointer-events: none;
 }
 
 @media (min-width: 640px) {
@@ -38,10 +52,10 @@
   align-items: center;
   justify-content: center;
   border-radius: 1rem;
-  background-color: hsl(var(--primary));
+  background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.85) 100%);
   color: hsl(var(--primary-foreground));
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  box-shadow: 0 0 0 1px hsl(var(--primary) / 0.2);
+  box-shadow: 0 8px 16px hsl(var(--primary) / 0.3), 0 0 0 1px hsl(var(--primary) / 0.2);
+  border: 2px solid rgba(255, 255, 255, 0.4);
 }
 
 .extraction-header h1 {
@@ -68,10 +82,12 @@
 
 .extraction-form {
   overflow: hidden;
-  border-radius: 1rem;
+  border-radius: 1.25rem;
   border: 1px solid hsl(var(--border));
   background-color: hsl(var(--card));
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.08), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  position: relative;
+  z-index: 1;
 }
 
 .extraction-section {
@@ -122,7 +138,7 @@
   flex-direction: column;
   align-items: center;
   gap: 0.625rem;
-  border-radius: 0.75rem;
+  border-radius: 0.875rem;
   border: 2px solid hsl(var(--border));
   padding-left: 1rem;
   padding-right: 1rem;
@@ -134,18 +150,21 @@
   background-color: hsl(var(--background));
   color: hsl(var(--muted-foreground));
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.25s ease;
 }
 
 .browser-option:hover {
-  border-color: hsl(var(--ring) / 0.4);
-  background-color: hsl(var(--muted) / 0.6);
+  border-color: hsl(var(--ring) / 0.5);
+  background-color: hsl(var(--muted) / 0.8);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+  transform: translateY(-2px);
 }
 
 .browser-option.selected {
-  border-color: hsl(var(--primary));
-  background-color: hsl(var(--accent) / 0.1);
+  border-color: hsl(var(--primary) / 0.8);
+  background: linear-gradient(135deg, hsl(var(--primary) / 0.08) 0%, hsl(var(--primary) / 0.04) 100%);
   color: hsl(var(--foreground));
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.1);
 }
 
 .browser-dot {
@@ -223,21 +242,23 @@
   padding-bottom: 0.625rem;
   font-size: 0.875rem;
   color: hsl(var(--foreground));
-  transition: all 0.2s ease;
+  transition: all 0.25s ease;
 }
 
 .form-input::placeholder {
-  color: hsl(var(--muted-foreground) / 0.7);
+  color: hsl(var(--muted-foreground) / 0.65);
 }
 
 .form-input:hover {
-  border-color: hsl(var(--border));
+  border-color: hsl(var(--border) / 0.8);
+  background-color: hsl(var(--muted) / 0.3);
 }
 
 .form-input:focus {
   outline: none;
   border-color: hsl(var(--ring));
-  box-shadow: 0 0 0 2px hsl(var(--ring) / 0.25);
+  background-color: white;
+  box-shadow: 0 0 0 3px hsl(var(--ring) / 0.1), 0 0 0 1px hsl(var(--ring) / 0.2);
 }
 
 .form-input.with-icon {
@@ -318,7 +339,7 @@
   justify-content: center;
   gap: 0.5rem;
   border-radius: 0.75rem;
-  background-color: hsl(var(--primary));
+  background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.85) 100%);
   padding-left: 1.5rem;
   padding-right: 1.5rem;
   padding-top: 0.875rem;
@@ -326,14 +347,17 @@
   font-size: 0.875rem;
   font-weight: 600;
   color: hsl(var(--primary-foreground));
-  transition: all 0.2s ease;
+  transition: all 0.25s ease;
   cursor: pointer;
   border: none;
   font-family: inherit;
+  box-shadow: 0 4px 12px hsl(var(--primary) / 0.3);
 }
 
 .submit-button:hover:not(:disabled) {
-  background-color: hsl(var(--primary) / 0.9);
+  background: linear-gradient(135deg, hsl(var(--primary) / 0.9) 0%, hsl(var(--primary) / 0.75) 100%);
+  box-shadow: 0 8px 20px hsl(var(--primary) / 0.4);
+  transform: translateY(-2px);
 }
 
 .submit-button:focus-visible {
@@ -351,13 +375,16 @@
   display: flex;
   align-items: flex-start;
   gap: 0.75rem;
-  border-radius: 0.75rem;
-  border: 1px solid hsl(var(--primary) / 0.2);
-  background-color: hsl(var(--accent) / 0.1);
+  border-radius: 0.875rem;
+  border: 1px solid hsl(var(--primary) / 0.3);
+  background: linear-gradient(135deg, hsl(var(--accent) / 0.08) 0%, hsl(var(--accent) / 0.04) 100%);
   padding-left: 1.25rem;
   padding-right: 1.25rem;
   padding-top: 1rem;
   padding-bottom: 1rem;
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.05);
+  position: relative;
+  z-index: 1;
 }
 
 .security-notice-icon {

@@ -74,3 +74,8 @@ export interface ExtractionProgress {
   message: string;
   progress: number;
 }
+
+export interface ProfileInfo {
+  id: string;
+  name: string;
+}

@@ -4,8 +4,12 @@ import ProgressDisplay from "./components/ProgressDisplay";
 import ResultsDisplay from "./components/ResultsDisplay";
 import LoginForm from "./components/LoginForm";
 import UserProfile from "./components/UserProfile";
-import { ExtractionState, ExtractionData, AuthState } from "./types";
+import UserHeader from "./components/UserHeader";
+import { ExtractionState, ExtractionData, AuthState, ProfileInfo } from "./types";
 import { AuthService, AuthUser } from "./services/auth.service";
+import { UnauthorizedError } from "./services/api.service";
+import { config } from "./config/config";
+import { parseError, logError } from "./utils/error-handler";
 
 function App() {
   const [authState, setAuthState] = useState<AuthState>("unauthenticated");
@@ -20,9 +24,9 @@ function App() {
   );
   const [error, setError] = useState<string>("");
   const [selectedBrowser, setSelectedBrowser] = useState<"chrome" | "firefox" | "edge">("chrome");
-  const [firefoxProfiles, setFirefoxProfiles] = useState<string[]>([]);
-  const [chromeProfiles, setChromeProfiles] = useState<string[]>([]);
-  const [edgeProfiles, setEdgeProfiles] = useState<string[]>([]);
+  const [firefoxProfiles, setFirefoxProfiles] = useState<ProfileInfo[]>([]);
+  const [chromeProfiles, setChromeProfiles] = useState<ProfileInfo[]>([]);
+  const [edgeProfiles, setEdgeProfiles] = useState<ProfileInfo[]>([]);
   const [loadingProfiles, setLoadingProfiles] = useState(true);
 
   useEffect(() => {
@@ -39,6 +43,26 @@ function App() {
 
     // Load profiles for all browsers on mount
     loadAllBrowserProfiles();
+
+    // Listen for unauthorized (401) errors
+    const handleUnauthorized = async (event: Event) => {
+      const customEvent = event as CustomEvent;
+      console.warn("Session expired or unauthorized:", customEvent.detail);
+
+      // Clear session immediately
+      AuthService.clearSession();
+      setUser(null);
+      setAuthState("unauthenticated");
+      setAuthError("Your session has expired. Please log in again.");
+      setError("");
+      setState("idle");
+    };
+
+    window.addEventListener("auth:unauthorized", handleUnauthorized);
+
+    return () => {
+      window.removeEventListener("auth:unauthorized", handleUnauthorized);
+    };
   }, []);
 
   const loadAllBrowserProfiles = async () => {
@@ -98,21 +122,45 @@ function App() {
         vintedBaseUrl: formData.vintedBaseUrl,
       });
 
+      console.log("Electron API extracted data:", {
+        keys: Object.keys(data),
+        data: data,
+      });
+
       setExtractionData(data);
 
       setState("saving");
-      await electronAPI.saveExtraction(data, "database", {
+      const session = AuthService.getSession();
+      if (!session) {
+        throw new Error("Session not found. Please log in again.");
+      }
+
+      const { ApiService } = await import("./services/api.service");
+      const result = await ApiService.storeDesktopSession(session.accessToken, {
         vintedEmail: formData.vintedEmail,
-        userEmail: formData.userEmail,
-        vintedMemberId: formData.vintedMemberId,
+        browserFingerprint: data.fingerprint,
+        sessionData: data.authentication.cookies,
+        sessionOrigins: data.authentication.origins,
       });
 
       setState("complete");
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      setError(errorMessage);
+      const appError = parseError(err);
+      logError(err, "Session Extraction");
+
+      // Handle authentication errors
+      if (appError.shouldRedirectToLogin) {
+        AuthService.clearSession();
+        setUser(null);
+        setAuthState("unauthenticated");
+        setAuthError("Your session has expired. Please log in again.");
+        setError("");
+        setState("idle");
+        return;
+      }
+
+      setError(appError.message);
       setState("error");
-      console.error("Extraction failed:", err);
     }
   };
 
@@ -169,6 +217,7 @@ function App() {
   // Show user profile and extraction tools if authenticated
   return (
     <div className="flex min-h-screen flex-col bg-background">
+      <UserHeader user={user} onLogout={handleLogout} isLoggingOut={isLoggingOut} />
       <main className="flex flex-1 items-center justify-center bg-muted/40 px-4 ">
         {state === "idle" && (
           <ExtractionForm
@@ -190,19 +239,23 @@ function App() {
 
         {state === "error" && (
           <div className="mx-auto w-full max-w-md">
-            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-8 text-center shadow-sm">
-              <h2 className="mb-3 text-xl font-semibold text-destructive">
-                ❌ Error During Extraction
-              </h2>
-              <p className="mb-6 text-sm leading-relaxed text-destructive">
-                {error}
-              </p>
-              <button
-                onClick={handleReset}
-                className="inline-block rounded-lg border border-transparent bg-primary px-6 py-2 text-base font-semibold text-primary-foreground transition-all hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Try Again
-              </button>
+            <div className="relative overflow-hidden rounded-lg border border-destructive/20 bg-destructive/5 p-8 text-center shadow-sm">
+              <div className="absolute inset-0 bg-gradient-to-br from-destructive/10 to-destructive/5" />
+              <div className="relative">
+                <h2 className="mb-3 text-xl font-semibold text-destructive">
+                  Extraction Failed
+                </h2>
+                <p className="mb-6 text-sm leading-relaxed text-destructive/80">
+                  {error}
+                </p>
+                <button
+                  onClick={handleReset}
+                  className="group relative inline-block overflow-hidden rounded-lg bg-primary px-6 py-2 text-base font-semibold text-primary-foreground transition-all duration-200 shadow-sm hover:shadow-md hover:bg-primary/95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2"
+                >
+                  <div className="absolute inset-0 -translate-x-full bg-white/10 transition-transform duration-300 group-hover:translate-x-full" />
+                  <span className="relative">Try Again</span>
+                </button>
+              </div>
             </div>
           </div>
         )}

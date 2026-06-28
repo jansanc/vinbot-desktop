@@ -1,4 +1,11 @@
-const API_BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:3001";
+import { config } from "../config/config";
+
+export class UnauthorizedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UnauthorizedError";
+  }
+}
 
 export interface LoginResponse {
   status: "success" | "fail" | "error";
@@ -49,9 +56,33 @@ export interface DesktopSessionResponse {
 }
 
 export class ApiService {
+  private static handleAuthError(response: Response): void {
+    if (response.status === 401) {
+      const timestamp = new Date().toISOString();
+      const message = `[${timestamp}] error: [${response.status}] ${response.statusText} User not authenticated`;
+      console.error(message);
+
+      // Clear stored session and user data
+      localStorage.removeItem(config.storage.keys.session);
+      localStorage.removeItem(config.storage.keys.user);
+      config.storage.memoryStore.clear();
+
+      // Dispatch event to trigger re-authentication
+      window.dispatchEvent(
+        new CustomEvent("auth:unauthorized", {
+          detail: { status: response.status, statusText: response.statusText },
+        })
+      );
+
+      throw new UnauthorizedError("User not authenticated. Please log in again.");
+    }
+  }
+
   static async login(credentials: LoginCredentials): Promise<LoginResponse> {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/auth/login`, {
+      const response = await fetch(
+        `${config.api.baseUrl}${config.api.endpoints.auth.login}`,
+        {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -60,13 +91,31 @@ export class ApiService {
       });
 
       if (!response.ok) {
+        ApiService.handleAuthError(response);
         const errorData = await response.json();
         throw new Error(
           errorData.data?.message || errorData.message || "Login failed"
         );
       }
 
-      return await response.json();
+      const data = await response.json();
+
+      if (data.status !== "success") {
+        throw new Error(data.message || "Login failed");
+      }
+
+      if (!data.data?.session?.accessToken) {
+        console.error("Login response missing access token:", data);
+        throw new Error("Server did not return access token");
+      }
+
+      console.log("Login successful, token obtained:", {
+        hasAccessToken: !!data.data.session.accessToken,
+        hasRefreshToken: !!data.data.session.refreshToken,
+        expiresIn: data.data.session.expiresIn,
+      });
+
+      return data;
     } catch (error) {
       throw error instanceof Error ? error : new Error("Network error");
     }
@@ -74,7 +123,9 @@ export class ApiService {
 
   static async refreshToken(refreshToken: string): Promise<LoginResponse> {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/auth/refresh`, {
+      const response = await fetch(
+        `${config.api.baseUrl}${config.api.endpoints.auth.refresh}`,
+        {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -82,11 +133,23 @@ export class ApiService {
         body: JSON.stringify({ refreshToken }),
       });
 
+      // Check HTTP status first
       if (!response.ok) {
+        ApiService.handleAuthError(response);
         throw new Error("Token refresh failed");
       }
 
-      return await response.json();
+      const data = await response.json();
+
+      // Check for API-level errors
+      if (data.status === "fail") {
+        if (data.message?.toLowerCase().includes("not authenticated")) {
+          throw new UnauthorizedError("Session expired. Please log in again.");
+        }
+        throw new Error(data.message || "Token refresh failed");
+      }
+
+      return data as LoginResponse;
     } catch (error) {
       throw error instanceof Error ? error : new Error("Network error");
     }
@@ -94,18 +157,32 @@ export class ApiService {
 
   static async getCurrentUser(accessToken: string): Promise<any> {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/auth/me`, {
+      const response = await fetch(
+        `${config.api.baseUrl}${config.api.endpoints.auth.me}`,
+        {
         method: "GET",
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
       });
 
+      // Check HTTP status first
       if (!response.ok) {
+        ApiService.handleAuthError(response);
         throw new Error("Failed to fetch user");
       }
 
-      return await response.json();
+      const data = await response.json();
+
+      // Check for API-level errors
+      if (data.status === "fail") {
+        if (data.message?.toLowerCase().includes("not authenticated")) {
+          throw new UnauthorizedError("Session expired. Please log in again.");
+        }
+        throw new Error(data.message || "Failed to fetch user");
+      }
+
+      return data;
     } catch (error) {
       throw error instanceof Error ? error : new Error("Network error");
     }
@@ -113,7 +190,9 @@ export class ApiService {
 
   static async logout(accessToken: string): Promise<void> {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/auth/logout`, {
+      const response = await fetch(
+        `${config.api.baseUrl}${config.api.endpoints.auth.logout}`,
+        {
         method: "POST",
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -121,6 +200,12 @@ export class ApiService {
       });
 
       if (!response.ok) {
+        // For logout, we don't need to handle 401 specially
+        // Just log and continue
+        if (response.status === 401) {
+          console.warn("Session already expired");
+          return;
+        }
         throw new Error("Logout failed");
       }
     } catch (error) {
@@ -140,7 +225,9 @@ export class ApiService {
     }
   ): Promise<DesktopSessionResponse> {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/vinted/auth/desktop-session`, {
+      const response = await fetch(
+        `${config.api.baseUrl}${config.api.endpoints.vinted.desktopSession}`,
+        {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -149,14 +236,50 @@ export class ApiService {
         body: JSON.stringify(payload),
       });
 
+      // Check for HTTP errors first (including 401)
       if (!response.ok) {
+        ApiService.handleAuthError(response);
         const errorData = await response.json();
         throw new Error(
           errorData.data?.message || errorData.message || "Failed to store desktop session"
         );
       }
 
-      return await response.json();
+      const data = await response.json();
+
+      // Check for API-level errors (status: "fail")
+      if (data.status === "fail") {
+        // Check if it's an authentication error
+        if (
+          data.message?.toLowerCase().includes("not authenticated") ||
+          data.message?.toLowerCase().includes("unauthorized")
+        ) {
+          const timestamp = new Date().toISOString();
+          console.error(
+            `[${timestamp}] error: [401] ${data.message} User not authenticated`
+          );
+
+          // Clear stored session and user data
+          localStorage.removeItem(config.storage.keys.session);
+          localStorage.removeItem(config.storage.keys.user);
+          config.storage.memoryStore.clear();
+
+          // Dispatch event to trigger re-authentication
+          window.dispatchEvent(
+            new CustomEvent("auth:unauthorized", {
+              detail: { status: 401, statusText: "Unauthorized", message: data.message },
+            })
+          );
+
+          throw new UnauthorizedError(data.message || "User not authenticated. Please log in again.");
+        }
+
+        throw new Error(
+          data.data?.message || data.message || "Failed to store desktop session"
+        );
+      }
+
+      return data as DesktopSessionResponse;
     } catch (error) {
       throw error instanceof Error ? error : new Error("Network error");
     }

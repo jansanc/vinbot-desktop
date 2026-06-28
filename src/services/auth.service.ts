@@ -1,4 +1,6 @@
 import { ApiService, LoginResponse } from "./api.service";
+import { config } from "../config/config";
+import { storage } from "../config/storage";
 
 export interface Session {
   accessToken: string;
@@ -24,10 +26,7 @@ export interface AuthUser {
   daysUntilBilling: number | null;
 }
 
-const STORAGE_KEYS = {
-  SESSION: "vinted_session",
-  USER: "vinted_user",
-};
+const STORAGE_KEYS = config.storage.keys;
 
 export class AuthService {
   static async login(
@@ -43,16 +42,31 @@ export class AuthService {
     const session = response.data.session;
     const user = response.data.user;
 
+    if (!session?.accessToken) {
+      throw new Error("Server did not return access token");
+    }
+
     // Store in localStorage
-    this.saveSession(session);
-    this.saveUser(user);
+    AuthService.saveSession(session);
+    AuthService.saveUser(user);
+
+    // Verify session was saved
+    const savedSession = AuthService.getSession();
+    if (!savedSession?.accessToken) {
+      throw new Error("Failed to save session token");
+    }
+
+    console.log("Session saved successfully:", {
+      hasAccessToken: !!savedSession.accessToken,
+      expiresAt: savedSession.expiresAt,
+    });
 
     return { user, session };
   }
 
   static saveSession(session: Session): void {
     try {
-      localStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(session));
+      storage.setItem(STORAGE_KEYS.session, JSON.stringify(session));
     } catch (error) {
       console.error("Failed to save session:", error);
     }
@@ -60,7 +74,7 @@ export class AuthService {
 
   static saveUser(user: AuthUser): void {
     try {
-      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
+      storage.setItem(STORAGE_KEYS.user, JSON.stringify(user));
     } catch (error) {
       console.error("Failed to save user:", error);
     }
@@ -68,7 +82,7 @@ export class AuthService {
 
   static getSession(): Session | null {
     try {
-      const stored = localStorage.getItem(STORAGE_KEYS.SESSION);
+      const stored = storage.getItem(STORAGE_KEYS.session);
       return stored ? JSON.parse(stored) : null;
     } catch {
       return null;
@@ -77,7 +91,7 @@ export class AuthService {
 
   static getUser(): AuthUser | null {
     try {
-      const stored = localStorage.getItem(STORAGE_KEYS.USER);
+      const stored = storage.getItem(STORAGE_KEYS.user);
       return stored ? JSON.parse(stored) : null;
     } catch {
       return null;
@@ -107,8 +121,8 @@ export class AuthService {
 
   static clearSession(): void {
     try {
-      localStorage.removeItem(STORAGE_KEYS.SESSION);
-      localStorage.removeItem(STORAGE_KEYS.USER);
+      storage.removeItem(STORAGE_KEYS.session);
+      storage.removeItem(STORAGE_KEYS.user);
     } catch (error) {
       console.error("Failed to clear session:", error);
     }

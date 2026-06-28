@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import "./App.css";
 import ExtractionForm from "./components/ExtractionForm";
 import ProgressDisplay from "./components/ProgressDisplay";
 import ResultsDisplay from "./components/ResultsDisplay";
@@ -20,7 +19,10 @@ function App() {
     null,
   );
   const [error, setError] = useState<string>("");
+  const [selectedBrowser, setSelectedBrowser] = useState<"chrome" | "firefox" | "edge">("chrome");
   const [firefoxProfiles, setFirefoxProfiles] = useState<string[]>([]);
+  const [chromeProfiles, setChromeProfiles] = useState<string[]>([]);
+  const [edgeProfiles, setEdgeProfiles] = useState<string[]>([]);
   const [loadingProfiles, setLoadingProfiles] = useState(true);
 
   useEffect(() => {
@@ -35,31 +37,38 @@ function App() {
       AuthService.clearSession();
     }
 
-    // Load Firefox profiles on mount
-    loadProfilesForBrowser("firefox");
+    // Load profiles for all browsers on mount
+    loadAllBrowserProfiles();
   }, []);
 
-  const loadProfilesForBrowser = async (browser: "firefox" | "chrome" | "edge") => {
+  const loadAllBrowserProfiles = async () => {
     setLoadingProfiles(true);
     try {
       const electronAPI = (window as any).electronAPI;
       if (!electronAPI) {
-        throw new Error("Electron API not available");
+        console.warn(
+          "⚠️  Electron API not available. Make sure you're running through Electron, not browser directly."
+        );
+        console.warn("💡 Run: npm start (not npm run react-start)");
+        setError(
+          "App must run through Electron. Run 'npm start' instead of opening in browser."
+        );
+        setLoadingProfiles(false);
+        return;
       }
 
-      let profiles: string[] = [];
-      if (browser === "firefox") {
-        profiles = await electronAPI.getFirefoxProfiles();
-      } else if (browser === "chrome") {
-        profiles = await electronAPI.getChromeProfiles();
-      } else if (browser === "edge") {
-        profiles = await electronAPI.getEdgeProfiles();
-      }
+      const [firefox, chrome, edge] = await Promise.all([
+        electronAPI.getFirefoxProfiles().catch(() => []),
+        electronAPI.getChromeProfiles().catch(() => []),
+        electronAPI.getEdgeProfiles().catch(() => []),
+      ]);
 
-      setFirefoxProfiles(profiles);
+      setFirefoxProfiles(firefox);
+      setChromeProfiles(chrome);
+      setEdgeProfiles(edge);
     } catch (err) {
-      console.error(`Failed to load ${browser} profiles:`, err);
-      setError(`Failed to load ${browser} profiles`);
+      console.error("Failed to load browser profiles:", err);
+      setError("Failed to load browser profiles");
     } finally {
       setLoadingProfiles(false);
     }
@@ -71,10 +80,10 @@ function App() {
     vintedEmail: string;
     userEmail: string;
     vintedMemberId: string;
-    saveMethod: "file";
     vintedBaseUrl: string;
   }) => {
     try {
+      setSelectedBrowser(formData.browser);
       setState("extracting");
       setError("");
 
@@ -92,7 +101,7 @@ function App() {
       setExtractionData(data);
 
       setState("saving");
-      await electronAPI.saveExtraction(data, "file", {
+      await electronAPI.saveExtraction(data, "database", {
         vintedEmail: formData.vintedEmail,
         userEmail: formData.userEmail,
         vintedMemberId: formData.vintedMemberId,
@@ -122,8 +131,7 @@ function App() {
       setUser(loggedInUser);
       setAuthState("authenticated");
     } catch (err) {
-      const errorMessage =
-        err instanceof Error ? err.message : "Login failed";
+      const errorMessage = err instanceof Error ? err.message : "Login failed";
       setAuthError(errorMessage);
       setAuthState("error");
     } finally {
@@ -160,29 +168,20 @@ function App() {
 
   // Show user profile and extraction tools if authenticated
   return (
-    <div className="App">
-      <header className="app-header">
-        <h1>🔐 Vinted Session Authenticator</h1>
-        <p>Extract and manage your Vinted authentication data securely</p>
-      </header>
-
-      <main className="app-main">
-        <UserProfile
-          user={user}
-          onLogout={handleLogout}
-          isLoggingOut={isLoggingOut}
-        />
-
+    <div className="flex min-h-screen flex-col bg-background">
+      <main className="flex flex-1 items-center justify-center bg-muted/40 px-4 ">
         {state === "idle" && (
           <ExtractionForm
             onSubmit={handleExtraction}
             firefoxProfiles={firefoxProfiles}
+            chromeProfiles={chromeProfiles}
+            edgeProfiles={edgeProfiles}
             loadingProfiles={loadingProfiles}
           />
         )}
 
         {(state === "extracting" || state === "saving") && (
-          <ProgressDisplay stage={state} />
+          <ProgressDisplay stage={state} browser={selectedBrowser} />
         )}
 
         {state === "complete" && extractionData && (
@@ -190,11 +189,18 @@ function App() {
         )}
 
         {state === "error" && (
-          <div className="error-container">
-            <div className="error-box">
-              <h2>❌ Error During Extraction</h2>
-              <p className="error-message">{error}</p>
-              <button className="btn btn-primary" onClick={handleReset}>
+          <div className="mx-auto w-full max-w-md">
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-8 text-center shadow-sm">
+              <h2 className="mb-3 text-xl font-semibold text-destructive">
+                ❌ Error During Extraction
+              </h2>
+              <p className="mb-6 text-sm leading-relaxed text-destructive">
+                {error}
+              </p>
+              <button
+                onClick={handleReset}
+                className="inline-block rounded-lg border border-transparent bg-primary px-6 py-2 text-base font-semibold text-primary-foreground transition-all hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+              >
                 Try Again
               </button>
             </div>
@@ -202,8 +208,8 @@ function App() {
         )}
       </main>
 
-      <footer className="app-footer">
-        <p>
+      <footer className="border-t border-border bg-card px-6 py-6 text-center">
+        <p className="text-xs font-normal text-muted-foreground">
           Your data is extracted locally and never shared without your consent
         </p>
       </footer>

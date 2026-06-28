@@ -34,6 +34,20 @@ export interface LoginCredentials {
   password: string;
 }
 
+export interface DesktopSessionResponse {
+  status: "success" | "fail" | "error";
+  message: string;
+  data: {
+    id: string;
+    userId: string;
+    vintedEmail: string;
+    vintedUsername?: string;
+    createdAt: string;
+    updatedAt: string;
+  };
+  requestId: string;
+}
+
 export class ApiService {
   static async login(credentials: LoginCredentials): Promise<LoginResponse> {
     try {
@@ -109,6 +123,40 @@ export class ApiService {
       if (!response.ok) {
         throw new Error("Logout failed");
       }
+    } catch (error) {
+      throw error instanceof Error ? error : new Error("Network error");
+    }
+  }
+
+  static async storeDesktopSession(
+    accessToken: string,
+    payload: {
+      vintedEmail: string;
+      browserFingerprint: Record<string, any>;
+      sessionData: Array<Record<string, any>>;
+      sessionOrigins: Array<Record<string, any>>;
+      vintedMemberId?: string;
+      updateSessionOnly?: boolean;
+    }
+  ): Promise<DesktopSessionResponse> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/vinted/auth/desktop-session`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(
+          errorData.data?.message || errorData.message || "Failed to store desktop session"
+        );
+      }
+
+      return await response.json();
     } catch (error) {
       throw error instanceof Error ? error : new Error("Network error");
     }

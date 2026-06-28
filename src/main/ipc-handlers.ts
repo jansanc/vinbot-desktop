@@ -3,7 +3,8 @@ import path from "path";
 import os from "os";
 import { readFileSync, existsSync, readdirSync, writeFileSync, mkdirSync } from "fs";
 import { extractFirefoxProfileData } from "./extractors/firefox.extractor";
-import { getChromeProfiles, getEdgeProfiles } from "./extractors/chrome.extractor";
+import { getChromeProfiles, extractChromeProfileData } from "./extractors/chrome.extractor";
+import { getEdgeProfiles, extractEdgeProfileData } from "./extractors/edge.extractor";
 import type { ExtractionData } from "../types";
 
 async function saveToDatabase(
@@ -119,41 +120,15 @@ function registerIPCHandlers() {
         );
         return extractedData;
       } else if (browser === "chrome") {
-        // For Chrome/Edge, we'll extract Firefox data for now
-        // Full Chrome/Edge extraction can be implemented later
-        console.log("[Chrome] Profile extraction requested:", profile);
-        const firefoxProfilesDir = path.join(
-          appData,
-          "Mozilla\\Firefox\\Profiles",
-        );
-        const profiles = readdirSync(firefoxProfilesDir).filter(
-          (f: string) => f.includes(".") || f.includes(" "),
-        );
-        if (profiles.length === 0) {
-          throw new Error("No Firefox profiles found for fallback");
-        }
-        const profilePath = path.join(firefoxProfilesDir, profiles[0]);
-        const extractedData = await extractFirefoxProfileData(
-          profilePath,
+        const extractedData = await extractChromeProfileData(
+          profile || "Default",
+          "chrome",
           vintedBaseUrl,
         );
         return extractedData;
       } else if (browser === "edge") {
-        // Same fallback for Edge
-        console.log("[Edge] Profile extraction requested:", profile);
-        const firefoxProfilesDir = path.join(
-          appData,
-          "Mozilla\\Firefox\\Profiles",
-        );
-        const profiles = readdirSync(firefoxProfilesDir).filter(
-          (f: string) => f.includes(".") || f.includes(" "),
-        );
-        if (profiles.length === 0) {
-          throw new Error("No Firefox profiles found for fallback");
-        }
-        const profilePath = path.join(firefoxProfilesDir, profiles[0]);
-        const extractedData = await extractFirefoxProfileData(
-          profilePath,
+        const extractedData = await extractEdgeProfileData(
+          profile || "Default",
           vintedBaseUrl,
         );
         return extractedData;

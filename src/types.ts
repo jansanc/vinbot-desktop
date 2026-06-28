@@ -29,7 +29,8 @@ export interface Fingerprint {
   systemInfo: {
     platform: string;
     arch: string;
-    firefoxVersion: string;
+    firefoxVersion?: string;
+    chromiumVersion?: string;
   };
 }
 

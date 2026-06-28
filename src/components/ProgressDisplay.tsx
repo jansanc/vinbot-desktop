@@ -1,18 +1,20 @@
 import React, { useState, useEffect } from "react";
-import "../styles/ProgressDisplay.css";
 
 interface ProgressDisplayProps {
   stage: "extracting" | "saving";
+  browser?: "chrome" | "firefox" | "edge";
 }
 
-const ProgressDisplay: React.FC<ProgressDisplayProps> = ({ stage }) => {
+const ProgressDisplay: React.FC<ProgressDisplayProps> = ({ stage, browser = "chrome" }) => {
   const [progress, setProgress] = useState(0);
   const [currentStep, setCurrentStep] = useState(0);
+
+  const browserLabel = browser === "firefox" ? "Firefox" : browser === "chrome" ? "Chrome" : "Edge";
 
   const steps =
     stage === "extracting"
       ? [
-          { label: "Locating Firefox profile", duration: 1000 },
+          { label: `Locating ${browserLabel} profile`, duration: 1000 },
           { label: "Extracting browser fingerprint", duration: 2000 },
           { label: "Extracting cookies", duration: 2000 },
           { label: "Extracting localStorage", duration: 2000 },

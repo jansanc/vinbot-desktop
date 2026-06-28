@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import "../styles/LoginForm.css";
 
 interface LoginFormProps {
   onSubmit: (email: string, password: string) => Promise<void>;

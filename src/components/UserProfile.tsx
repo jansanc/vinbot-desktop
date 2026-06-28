@@ -1,6 +1,5 @@
 import React from "react";
 import { AuthUser } from "../services/auth.service";
-import "../styles/UserProfile.css";
 
 interface UserProfileProps {
   user: AuthUser;

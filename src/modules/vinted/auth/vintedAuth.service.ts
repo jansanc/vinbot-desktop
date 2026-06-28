@@ -1,4 +1,6 @@
 import type { Fingerprint } from "../../../types";
+import { ApiService } from "../../../services/api.service";
+import { AuthService } from "../../../services/auth.service";
 
 export interface AuthData {
   cookies: Array<{
@@ -18,25 +20,64 @@ export interface AuthData {
   }>;
 }
 
+export interface StoreDesktopSessionResult {
+  id: string;
+  userId: string;
+  vintedEmail: string;
+  vintedUsername?: string;
+  createdAt: string;
+  updatedAt: string;
+  message: string;
+}
+
 export async function saveFirefoxExtractionData(
   vintedEmail: string,
   fingerprint: Fingerprint,
   auth: AuthData,
   userEmail: string,
-  vintedMemberId: string,
-): Promise<void> {
-  console.log("saveFirefoxExtractionData called but not implemented");
-  console.log({
-    vintedEmail,
-    userEmail,
-    vintedMemberId,
-    fingerprintKeys: Object.keys(fingerprint),
-    cookiesCount: auth.cookies.length,
-  });
+  vintedMemberId?: string,
+): Promise<StoreDesktopSessionResult> {
+  try {
+    const session = AuthService.getSession();
+    if (!session) {
+      throw new Error("No authenticated session found. Please login first.");
+    }
 
-  // TODO: Implement Supabase integration here
-  // This is a placeholder for the actual database saving logic
-  throw new Error(
-    "Database saving not configured. Please implement Supabase integration.",
-  );
+    console.log("Storing Firefox extraction data via API:", {
+      vintedEmail,
+      userEmail,
+      vintedMemberId,
+      cookiesCount: auth.cookies.length,
+      originsCount: auth.origins.length,
+    });
+
+    const response = await ApiService.storeDesktopSession(
+      session.accessToken,
+      {
+        vintedEmail,
+        browserFingerprint: fingerprint,
+        sessionData: auth.cookies,
+        sessionOrigins: auth.origins,
+        vintedMemberId,
+        updateSessionOnly: false,
+      }
+    );
+
+    if (response.status !== "success") {
+      throw new Error(response.message || "Failed to store desktop session data");
+    }
+
+    console.log("Desktop session data stored successfully:", response.data);
+
+    return {
+      ...response.data,
+      message: response.message,
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error("Failed to save Firefox extraction data:", errorMessage);
+    throw new Error(
+      `Failed to store session data: ${errorMessage}`
+    );
+  }
 }

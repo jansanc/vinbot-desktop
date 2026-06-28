@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { ExtractionData } from "../types";
-import "../styles/ResultsDisplay.css";
 
 interface ResultsDisplayProps {
   data: ExtractionData;

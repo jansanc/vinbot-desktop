@@ -226,7 +226,7 @@ export class ApiService {
   ): Promise<DesktopSessionResponse> {
     try {
       const response = await fetch(
-        `${config.api.baseUrl}${config.api.endpoints.vinted.desktopSession}`,
+        `${config.api.baseUrl}${config.api.endpoints.vinted.link}`,
         {
         method: "POST",
         headers: {

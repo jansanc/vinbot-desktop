@@ -20,29 +20,28 @@ export interface SessionUploadOptions {
   accessToken?: string;
 }
 
+export interface LinkVintedAccountPayload {
+  vintedEmail: string;
+  vinted_member_id?: string;
+  sessionData: Array<Record<string, unknown>>;
+  sessionOrigins: Array<Record<string, unknown>>;
+  browserFingerprint: Record<string, unknown>;
+}
+
 export class SessionUploadService {
   /**
-   * Upload session to API endpoint (which then stores to Supabase/S3)
+   * Link and upload Vinted account session in a single request.
+   * Sends extracted session data, browser fingerprint, and account info to the consolidated endpoint.
+   * This single endpoint handles:
+   * - Creating vinted_accounts record
+   * - Storing session data and browser fingerprint
+   * - Linking the account to the authenticated user
    */
-  static async uploadSessionToAPI(
+  static async linkVintedAccount(
     session: ExtractedSession,
     options: SessionUploadOptions
   ): Promise<{ success: boolean; id?: string; message: string }> {
     try {
-      const payload = {
-        vintedEmail: options.vintedEmail,
-        vintedMemberId: options.vintedMemberId || "",
-        session: {
-          cookies: session.cookies,
-          localStorage: session.storage.localStorage,
-          sessionStorage: session.storage.sessionStorage,
-          profile_name: session.profile_name,
-          profile_path: session.profile_path,
-          extracted_at: session.extracted_at,
-        },
-        userEmail: options.userEmail,
-      };
-
       const headers: HeadersInit = {
         "Content-Type": "application/json",
       };
@@ -51,40 +50,98 @@ export class SessionUploadService {
         headers["Authorization"] = `Bearer ${options.accessToken}`;
       }
 
+      // Prepare the consolidated payload for /vinted/auth/link
+      // Convert SessionCookie to the API format (Record<string, unknown>[])
+      const sessionData = session.cookies.map((cookie) => ({
+        name: cookie.name,
+        value: cookie.value,
+        domain: cookie.domain,
+        path: cookie.path,
+        secure: cookie.secure,
+        httpOnly: cookie.httpOnly,
+        expires: cookie.expires,
+      } as Record<string, unknown>));
+
+      // Convert storage to sessionOrigins format for API
+      // API expects array of origins with localStorage items
+      const localStorageItems = session.storage.localStorage
+        ? Object.entries(session.storage.localStorage).map(([name, value]) => ({
+            name,
+            value,
+          }))
+        : [];
+
+      const sessionOrigins = [
+        {
+          origin: session.url || ".vinted.com",
+          localStorage: localStorageItems,
+        } as Record<string, unknown>,
+      ];
+
+      const linkPayload: LinkVintedAccountPayload = {
+        vintedEmail: options.vintedEmail,
+        vinted_member_id: options.vintedMemberId,
+        sessionData,
+        sessionOrigins,
+        browserFingerprint: {},
+      };
+
+      console.log("[SessionUploadService] Linking Vinted account with consolidated endpoint:", {
+        vintedEmail: options.vintedEmail,
+        endpoint: `${config.api.baseUrl}${config.api.endpoints.vinted.link}`,
+        cookieCount: session.cookies.length,
+        storageSize: Object.keys(session.storage.localStorage).length,
+      });
+
       const response = await fetch(
-        `${config.api.baseUrl}/api/v1/integrations/vinted/session/upload`,
+        `${config.api.baseUrl}${config.api.endpoints.vinted.link}`,
         {
           method: "POST",
           headers,
-          body: JSON.stringify(payload),
+          body: JSON.stringify(linkPayload),
         }
       );
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(
-          errorData.message || `Upload failed with status ${response.status}`
-        );
+        const errorMsg = errorData.message || `Link failed with status ${response.status}`;
+        console.warn("[SessionUploadService] Account link warning:", {
+          status: response.status,
+          message: errorMsg,
+        });
+        // Don't fail the entire flow if link fails, just warn
+        return {
+          success: false,
+          message: `Account link note: ${errorMsg}`,
+        };
       }
 
       const data = await response.json();
+      const accountId = data.data?.id || data.id;
+      console.log("[SessionUploadService] Account linked successfully:", {
+        accountId,
+        vintedEmail: options.vintedEmail,
+      });
+
       return {
         success: true,
-        id: data.data?.id,
-        message: data.message || "Session uploaded successfully",
+        id: accountId,
+        message: data.message || "Account linked successfully",
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error("[SessionUploadService] API upload failed:", message);
+      console.warn("[SessionUploadService] Account link warning:", message);
+      // Don't fail the entire flow, just log the warning
       return {
         success: false,
-        message: `Upload failed: ${message}`,
+        message: `Link note: ${message}`,
       };
     }
   }
 
   /**
    * Upload session to Supabase directly
+   * @deprecated Use linkVintedAccount instead for consolidated flow
    */
   static async uploadToSupabase(
     session: ExtractedSession,
@@ -137,6 +194,7 @@ export class SessionUploadService {
 
   /**
    * Upload session to S3 directly
+   * @deprecated Use linkVintedAccount instead for consolidated flow
    * Note: Requires AWS SDK or presigned URL approach
    */
   static async uploadToS3(

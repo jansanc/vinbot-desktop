@@ -12,8 +12,7 @@ export const config = {
         me: "/api/v1/auth/me",
       },
       vinted: {
-        desktopSession: "/api/v1/vinted/auth/desktop-session",
-        sessionUpload: "/api/v1/integrations/vinted/session/upload",
+        link: "/api/v1/vinted/auth/link",
         profileUpload: "/api/v1/integrations/vinted/profile/upload",
         profileDownload: "/api/v1/integrations/vinted/profile/download",
       },

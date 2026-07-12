@@ -1,4 +1,10 @@
+const path = require('path');
+
 module.exports = {
-  // Using Tailwind CSS CLI approach instead of PostCSS
+  webpack: {
+    alias: {
+      '@': path.resolve(__dirname, 'src/'),
+    },
+  },
 };
 

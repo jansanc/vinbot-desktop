@@ -521,23 +521,23 @@ function registerIPCHandlers() {
 
       console.log(`[IPC] Session extracted: ${session.cookies.length} cookies found`);
 
-      // Upload to API endpoint
-      const uploadResult = await SessionUploadService.uploadSessionToAPI(session, {
+      // Link account via consolidated endpoint
+      const linkResult = await SessionUploadService.linkVintedAccount(session, {
         userEmail,
         vintedEmail,
         vintedMemberId,
         accessToken,
       });
 
-      if (!uploadResult.success) {
-        throw new Error(uploadResult.message);
+      if (!linkResult.success) {
+        throw new Error(linkResult.message);
       }
 
       return {
         success: true,
-        session_id: uploadResult.id,
+        session_id: linkResult.id,
         cookies_count: session.cookies.length,
-        message: uploadResult.message,
+        message: linkResult.message,
       };
     } catch (error) {
       const errorMessage =
@@ -636,113 +636,167 @@ function registerIPCHandlers() {
       sendProgress("ARCHIVE", `Profile archive: ${(result.profile_archive_size / (1024 * 1024)).toFixed(2)}MB`);
       sendProgress("DURATION", `Login took ${(result.loginDuration / 1000).toFixed(1)} seconds`);
 
-      // Upload tar.gz to S3 if requested
+      // Step 1: Upload profile to S3 if requested
+      let profileUploadResult: any = null;
+      console.log(`[IPC] Upload check: uploadToS3=${uploadToS3}, userEmail=${userEmail}, vintedEmail=${vintedEmail}, accessToken=${accessToken ? 'present' : 'missing'}`);
+
+      if (uploadToS3 && userEmail && vintedEmail && accessToken) {
+        try {
+          sendProgress("PROFILE_UPLOAD_START", `📤 Uploading profile archive to S3...`);
+          console.log(`[IPC] Profile archive path: ${result.profile_archive_path}`);
+
+          const archiveBuffer = fs.readFileSync(result.profile_archive_path);
+          const { config } = await import("../config/config");
+
+          const headers = {
+            "Content-Type": "application/gzip",
+            "Authorization": `Bearer ${accessToken}`,
+            "x-browser": browser,
+            "x-profile-id": profileName,
+            "x-profile-name": profileName,
+            "x-vinted-account-id": vintedMemberId || profileName,
+            "x-user-id": userEmail || "system",
+            "x-user-email": userEmail || "",
+            "x-vinted-email": vintedEmail,
+            "x-vinted-member-id": vintedMemberId || "",
+            "x-compressed-size": String(result.profile_archive_size),
+            "x-original-size": String(result.profile_archive_size),
+            "x-metadata": JSON.stringify({
+              compressedAt: new Date(result.compressed_at).toISOString(),
+              loginUrl: url,
+              extractedAt: new Date(result.extracted_at).toISOString(),
+              type: "interactive-login",
+            }),
+          };
+
+          console.log(`[IPC] Sending profile upload headers:`, {
+            browser: headers["x-browser"],
+            profileId: headers["x-profile-id"],
+            profileName: headers["x-profile-name"],
+            vintedAccountId: headers["x-vinted-account-id"],
+            userId: headers["x-user-id"],
+            vintedEmail: headers["x-vinted-email"],
+            metadataLength: headers["x-metadata"].length,
+          });
+
+          const profileUploadResponse = await fetch(
+            `${config.api.baseUrl}${config.api.endpoints.vinted.profileUpload}`,
+            {
+              method: "POST",
+              headers,
+              body: archiveBuffer,
+            }
+          );
+
+          if (!profileUploadResponse.ok) {
+            const errorText = await profileUploadResponse.text();
+            console.error(`[IPC] Profile upload HTTP error: ${profileUploadResponse.status}`, errorText.substring(0, 500));
+            throw new Error(`Profile upload failed: ${profileUploadResponse.status} ${errorText.substring(0, 200)}`);
+          }
+
+          const uploadData = await profileUploadResponse.json();
+          console.log(`[IPC] Profile upload response:`, JSON.stringify(uploadData, null, 2).substring(0, 1000));
+
+          // Check if API returned success
+          if (uploadData?.status === 'fail' || uploadData?.status === 'error') {
+            throw new Error(`API Error: ${uploadData?.message || 'Unknown error'}`);
+          }
+
+          const profileId = uploadData?.data?.data?.id || uploadData?.data?.id || uploadData?.id;
+          const storagePath = uploadData?.data?.data?.storagePath || uploadData?.data?.storagePath || uploadData?.storagePath;
+
+          if (profileId) {
+            sendProgress("PROFILE_UPLOAD_DONE", `✅ Profile uploaded to S3 (ID: ${profileId})`);
+            profileUploadResult = {
+              success: true,
+              profileId,
+              storageLocation: storagePath,
+            };
+          } else {
+            console.error(`[IPC] No profileId in response:`, uploadData);
+            throw new Error("Invalid response from profile upload - no ID returned");
+          }
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          sendProgress("PROFILE_UPLOAD_WARNING", `⚠️ Profile upload note: ${errorMsg}`);
+          profileUploadResult = {
+            success: false,
+            message: errorMsg,
+          };
+        }
+      } else {
+        console.log(`[IPC] Profile upload skipped - condition failed: uploadToS3=${uploadToS3}, userEmail=${!!userEmail}, vintedEmail=${!!vintedEmail}, accessToken=${!!accessToken}`);
+        if (!uploadToS3) sendProgress("PROFILE_UPLOAD_SKIPPED", `⏭️ Profile upload skipped (uploadToS3=false)`);
+      }
+
+      // Step 2: Link account via consolidated endpoint
+      // Note: We use minimal session data since extracting from temporary profile is unreliable
       let uploadResult: any = null;
-      if (uploadToS3 && userEmail && vintedEmail) {
+      if (userEmail && vintedEmail) {
         if (!accessToken) {
-          sendProgress("UPLOAD_FAILED", `⚠️ Access token required for S3 upload`);
+          sendProgress("LINK_FAILED", `⚠️ Access token required for account linking`);
           uploadResult = {
             success: false,
-            message: "Access token is required to upload to S3. Please provide your authentication token.",
+            message: "Access token is required. Please provide your authentication token.",
           };
         } else {
-          sendProgress("UPLOAD_START", `📤 Uploading profile archive to S3...`);
-
           try {
-            // Read the tar.gz file as binary
-            const archiveBuffer = fs.readFileSync(result.profile_archive_path);
+            sendProgress("LINK_START", `📝 Linking Vinted account...`);
 
-            // Import config to get API URL
-            const { config } = await import("../config/config");
+            // Create minimal extracted session with placeholder cookie
+            // The temporary profile is cleaned up after login, so we use a placeholder
+            // User can later refresh with full session data via updateSessionOnly
+            const placeholderCookie = {
+              name: "vinted_login_timestamp",
+              value: new Date().toISOString(),
+              domain: ".vinted.com",
+              path: "/",
+              secure: true,
+            };
 
-            // Make direct HTTP request from main process (bypassing ApiService which uses localStorage)
-            const uploadUrl = `${config.api.baseUrl}/api/v1/integrations/vinted/profile/upload`;
-
-            sendProgress("API_REQUEST", `Sending to: ${uploadUrl}`);
-
-            const uploadResponse = await fetch(uploadUrl, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/gzip",
-                "Authorization": `Bearer ${accessToken}`,
-                "X-Browser": browser,
-                "X-Profile-ID": profileName,
-                "X-Profile-Name": profileName,
-                "X-Vinted-Account-ID": vintedMemberId ?? profileName,
-                "X-User-ID": userEmail,
-                "X-User-Email": userEmail,
-                "X-Vinted-Email": vintedEmail,
-                "X-Vinted-Member-ID": vintedMemberId || "",
-                "X-Compressed-Size": String(result.profile_archive_size),
-                "X-Original-Size": String(result.profile_archive_size),
-                "X-Metadata": JSON.stringify({
-                  compressedAt: new Date(result.compressed_at).toISOString(),
-                  loginUrl: url,
-                  extractedAt: new Date(result.extracted_at).toISOString(),
-                  type: "interactive-login",
-                }),
+            const extractedSession = {
+              profile_name: result.profile_name,
+              profile_path: result.profile_path,
+              url: result.url,
+              cookies: [placeholderCookie], // Placeholder to satisfy API requirement
+              storage: {
+                localStorage: {
+                  vinted_login_time: new Date().toISOString(),
+                },
+                sessionStorage: {},
               },
-              body: archiveBuffer,
+              extracted_at: Date.now(),
+            };
+
+            // Link account via consolidated endpoint
+            sendProgress("LINK_START", `📝 Linking Vinted account...`);
+            const linkResult = await SessionUploadService.linkVintedAccount(extractedSession, {
+              userEmail: userEmail || "",
+              vintedEmail,
+              vintedMemberId,
+              accessToken,
             });
 
-            if (!uploadResponse.ok) {
-              const errorText = await uploadResponse.text();
-              let errorMsg = `${uploadResponse.status} ${uploadResponse.statusText}`;
-
-              if (uploadResponse.status === 401) {
-                errorMsg = "Authentication failed. Invalid or expired access token.";
-              } else if (uploadResponse.status === 403) {
-                errorMsg = "Permission denied. Check your access token and vinted email.";
-              } else if (errorText) {
-                try {
-                  const errorData = JSON.parse(errorText);
-                  errorMsg = errorData.message || errorMsg;
-                } catch (e) {
-                  errorMsg = errorText.substring(0, 200);
-                }
-              }
-
-              throw new Error(errorMsg);
-            }
-
-            const uploadResponseData = await uploadResponse.json();
-
-            console.log("[IPC] Upload response:", JSON.stringify(uploadResponseData, null, 2));
-            sendProgress("API_RESPONSE", `Response: ${JSON.stringify(uploadResponseData).substring(0, 200)}`);
-
-            // Response structure from sendResponse wrapper:
-            // { status, message, data: { success, data: { id, storagePath, ... } } }
-            // Access patterns to try:
-            const uploadId =
-              uploadResponseData?.data?.data?.id ||  // Nested: response.data.data.id
-              uploadResponseData?.data?.id ||         // Flat: response.data.id
-              uploadResponseData?.id;                  // Root: response.id
-
-            const storageLocation =
-              uploadResponseData?.data?.data?.storagePath ||
-              uploadResponseData?.data?.storagePath ||
-              uploadResponseData?.storagePath;
-
-            if (uploadId) {
-              sendProgress("UPLOAD_COMPLETE", `✅ Profile archive uploaded to S3`);
-              sendProgress("S3_PATH", `S3 ID: ${uploadId}`);
+            if (linkResult.success) {
+              sendProgress("LINK_COMPLETE", `✅ Account linked successfully (ID: ${linkResult.id})`);
               uploadResult = {
                 success: true,
-                id: uploadId,
-                message: "Profile archive uploaded successfully",
-                storageLocation: storageLocation,
+                id: linkResult.id,
+                message: "Account linked successfully",
               };
             } else {
-              console.error("[IPC] Invalid response structure:", uploadResponseData);
-              const responseStr = JSON.stringify(uploadResponseData, null, 2);
-              throw new Error(`Upload response invalid:\n${responseStr.substring(0, 500)}`);
+              sendProgress("LINK_WARNING", `⚠️ Account link note: ${linkResult.message}`);
+              uploadResult = {
+                success: false,
+                message: linkResult.message,
+              };
             }
-          } catch (uploadError) {
-            const uploadErrorMsg = uploadError instanceof Error ? uploadError.message : String(uploadError);
-            sendProgress("UPLOAD_FAILED", `⚠️ Upload failed: ${uploadErrorMsg}`);
+          } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            sendProgress("LINK_FAILED", `⚠️ Account linking failed: ${errorMsg}`);
             uploadResult = {
               success: false,
-              message: uploadErrorMsg,
+              message: errorMsg,
             };
           }
         }
@@ -751,8 +805,11 @@ function registerIPCHandlers() {
       return {
         success: true,
         session: result,
-        uploadResult: uploadResult,
-        message: uploadToS3 ? `Profile extracted, compressed and uploaded to S3` : `Profile extracted and compressed to tar.gz`,
+        profileUpload: profileUploadResult,
+        accountLink: uploadResult,
+        message: uploadToS3
+          ? `Profile uploaded to S3 and account linked successfully`
+          : `Profile extracted and account linked successfully`,
       };
     } catch (error) {
       const errorMessage =

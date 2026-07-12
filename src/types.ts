@@ -78,4 +78,5 @@ export interface ExtractionProgress {
 export interface ProfileInfo {
   id: string;
   name: string;
+  path?: string;
 }

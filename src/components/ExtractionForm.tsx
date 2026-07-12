@@ -57,13 +57,13 @@ export default function ExtractionForm({
     setIsSubmitting(true);
 
     try {
-      if (selectedBrowser === "firefox" && !selectedProfile) {
-        throw new Error("Please select a Firefox profile to continue.");
+      if (!selectedProfile) {
+        throw new Error("Please select a browser profile to continue.");
       }
 
       await onSubmit({
         browser: selectedBrowser,
-        profile: selectedBrowser === "firefox" ? selectedProfile : undefined,
+        profile: selectedProfile,
         vintedEmail,
         userEmail: "",
         vintedMemberId: "",
@@ -210,9 +210,7 @@ export default function ExtractionForm({
                     {selectedBrowser.charAt(0).toUpperCase() +
                       selectedBrowser.slice(1)}{" "}
                     Profile{" "}
-                    {selectedBrowser === "firefox" && (
-                      <span className="text-destructive">*</span>
-                    )}
+                    <span className="text-destructive">*</span>
                   </label>
                   {selectedProfile && (
                     <button
@@ -262,9 +260,7 @@ export default function ExtractionForm({
                           className={`${fieldClasses} appearance-none pr-10`}
                         >
                           <option value="">
-                            {selectedBrowser === "firefox"
-                              ? "Select a profile..."
-                              : "Select a profile (Default will be used if empty)..."}
+                            Select a profile...
                           </option>
                           {profiles.map((profile) => (
                             <option key={profile.id} value={profile.id}>

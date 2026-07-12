@@ -55,13 +55,19 @@ const createWindow = () => {
 
 const registerIPC = () => {
   try {
+    console.log("[IPC] Loading ipc-handlers from:", require.resolve("../dist/main/ipc-handlers.js"));
     const ipcHandlers = require("../dist/main/ipc-handlers.js");
+    console.log("[IPC] Loaded ipcHandlers:", Object.keys(ipcHandlers));
     if (typeof ipcHandlers.registerIPCHandlers === "function") {
+      console.log("[IPC] Calling registerIPCHandlers function...");
       ipcHandlers.registerIPCHandlers();
       console.log("[IPC] Handlers registered successfully");
+    } else {
+      console.error("[IPC] registerIPCHandlers is not a function. Type:", typeof ipcHandlers.registerIPCHandlers);
     }
   } catch (error) {
-    console.warn("[IPC] Warning - handlers not loaded:", error.message);
+    console.error("[IPC] ERROR - handlers not loaded:", error);
+    console.error("[IPC] Stack:", error.stack);
   }
 };
 

@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import ExtractionForm from "./components/ExtractionForm";
+import ProfileUploadFlow from "./components/ProfileUploadFlow";
+import InteractiveLoginFlow from "./components/InteractiveLoginFlow";
 import ProgressDisplay from "./components/ProgressDisplay";
 import ResultsDisplay from "./components/ResultsDisplay";
 import LoginForm from "./components/LoginForm";
@@ -11,6 +13,8 @@ import { UnauthorizedError } from "./services/api.service";
 import { config } from "./config/config";
 import { parseError, logError } from "./utils/error-handler";
 
+type AppMode = "extract" | "upload" | "interactive";
+
 function App() {
   const [authState, setAuthState] = useState<AuthState>("unauthenticated");
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -18,6 +22,7 @@ function App() {
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
+  const [appMode, setAppMode] = useState<AppMode>("extract");
   const [state, setState] = useState<ExtractionState>("idle");
   const [extractionData, setExtractionData] = useState<ExtractionData | null>(
     null,
@@ -218,8 +223,44 @@ function App() {
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <UserHeader user={user} onLogout={handleLogout} isLoggingOut={isLoggingOut} />
-      <main className="flex flex-1 items-center justify-center bg-muted/40 px-4 ">
+      <main className="flex flex-1 flex-col items-center justify-center bg-muted/40 px-4 ">
+        {/* Mode Tabs */}
         {state === "idle" && (
+          <div className="mb-6 flex gap-4 border-b">
+            <button
+              onClick={() => setAppMode("extract")}
+              className={`px-6 py-3 font-semibold transition-colors ${
+                appMode === "extract"
+                  ? "border-b-2 border-primary text-primary"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Extract Session
+            </button>
+            <button
+              onClick={() => setAppMode("interactive")}
+              className={`px-6 py-3 font-semibold transition-colors ${
+                appMode === "interactive"
+                  ? "border-b-2 border-primary text-primary"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Interactive Login
+            </button>
+            <button
+              onClick={() => setAppMode("upload")}
+              className={`px-6 py-3 font-semibold transition-colors ${
+                appMode === "upload"
+                  ? "border-b-2 border-primary text-primary"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Upload Profiles to S3
+            </button>
+          </div>
+        )}
+
+        {state === "idle" && appMode === "extract" && (
           <ExtractionForm
             onSubmit={handleExtraction}
             firefoxProfiles={firefoxProfiles}
@@ -229,12 +270,33 @@ function App() {
           />
         )}
 
+        {state === "idle" && appMode === "interactive" && (
+          <InteractiveLoginFlow
+            accessToken={AuthService.getSession()?.accessToken || ""}
+            userId={user?.id || ""}
+          />
+        )}
+
+        {state === "idle" && appMode === "upload" && (
+          <ProfileUploadFlow
+            chromeProfiles={chromeProfiles}
+            firefoxProfiles={firefoxProfiles}
+            edgeProfiles={edgeProfiles}
+            accessToken={AuthService.getSession()?.accessToken || ""}
+            vintedAccountId={user?.id || ""}
+            userId={user?.id || ""}
+            onUploadComplete={(results) => {
+              console.log("Upload complete:", results);
+            }}
+          />
+        )}
+
         {(state === "extracting" || state === "saving") && (
           <ProgressDisplay stage={state} browser={selectedBrowser} />
         )}
 
         {state === "complete" && extractionData && (
-          <ResultsDisplay data={extractionData} onReset={handleReset} />
+          <ResultsDisplay onReset={handleReset} extractionData={extractionData} />
         )}
 
         {state === "error" && (

@@ -24,6 +24,7 @@ export interface AuthUser {
   subscriptionTier: string | null;
   billingOverdue: boolean;
   daysUntilBilling: number | null;
+  session?: Session;
 }
 
 const STORAGE_KEYS = config.storage.keys;

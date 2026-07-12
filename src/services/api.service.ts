@@ -284,4 +284,162 @@ export class ApiService {
       throw error instanceof Error ? error : new Error("Network error");
     }
   }
+
+  static async uploadBrowserProfile(
+    accessToken: string,
+    payload: {
+      browser: "chrome" | "firefox" | "edge";
+      profileId: string;
+      profileName: string;
+      vintedAccountId: string;
+      userId: string;
+      profileData: Buffer | Blob | string; // Binary or base64 string
+      compressedSize: number;
+      originalSize: number;
+      metadata: string;
+      userEmail?: string;
+      vintedEmail?: string;
+      vintedMemberId?: string;
+    }
+  ): Promise<any> {
+    try {
+      const isBinary = payload.profileData instanceof Buffer || payload.profileData instanceof Blob;
+
+      // Use raw binary POST for binary uploads (no string limit, direct to server)
+      if (isBinary) {
+        let binaryData: ArrayBuffer | Uint8Array;
+
+        if (payload.profileData instanceof Buffer) {
+          binaryData = payload.profileData.buffer.slice(
+            payload.profileData.byteOffset,
+            payload.profileData.byteOffset + payload.profileData.byteLength
+          );
+        } else if (payload.profileData instanceof Blob) {
+          binaryData = await payload.profileData.arrayBuffer();
+        } else {
+          throw new Error("Invalid profile data type");
+        }
+
+        const response = await fetch(
+          `${config.api.baseUrl}/api/v1/integrations/vinted/profile/upload`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/octet-stream",
+              Authorization: `Bearer ${accessToken}`,
+              // Send metadata as headers to avoid parsing issues
+              "X-Browser": payload.browser,
+              "X-Profile-Id": payload.profileId,
+              "X-Profile-Name": payload.profileName,
+              "X-Vinted-Account-Id": payload.vintedAccountId,
+              "X-User-Id": payload.userId,
+              "X-Compressed-Size": String(payload.compressedSize),
+              "X-Original-Size": String(payload.originalSize),
+              "X-Metadata": payload.metadata,
+              ...(payload.userEmail && { "X-User-Email": payload.userEmail }),
+              ...(payload.vintedEmail && { "X-Vinted-Email": payload.vintedEmail }),
+              ...(payload.vintedMemberId && { "X-Vinted-Member-Id": payload.vintedMemberId }),
+            },
+            body: binaryData,
+          }
+        );
+
+        if (!response.ok) {
+          ApiService.handleAuthError(response);
+          let errorData: any = {};
+          try {
+            errorData = await response.json();
+          } catch {
+            // Response might not be JSON
+          }
+          const errorMsg = errorData?.data?.message || errorData?.message || response.statusText;
+          console.error("[ApiService] Upload failed with status", response.status, ":", errorMsg);
+          throw new Error(
+            `Upload failed (${response.status}): ${errorMsg}`
+          );
+        }
+
+        const data = await response.json();
+
+        if (data.status === "fail" || data.status === "error") {
+          if (
+            data.message?.toLowerCase().includes("not authenticated") ||
+            data.message?.toLowerCase().includes("unauthorized")
+          ) {
+            throw new UnauthorizedError(data.message || "User not authenticated. Please log in again.");
+          }
+          console.error("[ApiService] Upload rejected by API:", data.message || data);
+          throw new Error(data.message || "Failed to upload profile");
+        }
+
+        return data;
+      } else {
+        // Fallback to legacy base64 JSON endpoint for string data
+        const response = await fetch(
+          `${config.api.baseUrl}/api/v1/integrations/vinted/profile/upload/legacy`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${accessToken}`,
+            },
+            body: JSON.stringify({
+              ...payload,
+              profileData: payload.profileData,
+            }),
+          }
+        );
+
+        if (!response.ok) {
+          ApiService.handleAuthError(response);
+          const errorData = await response.json();
+          throw new Error(
+            errorData.data?.message || errorData.message || "Failed to upload profile"
+          );
+        }
+
+        const data = await response.json();
+
+        if (data.status === "fail" || data.status === "error") {
+          if (
+            data.message?.toLowerCase().includes("not authenticated") ||
+            data.message?.toLowerCase().includes("unauthorized")
+          ) {
+            throw new UnauthorizedError(data.message || "User not authenticated. Please log in again.");
+          }
+          throw new Error(data.message || "Failed to upload profile");
+        }
+
+        return data;
+      }
+    } catch (error) {
+      throw error instanceof Error ? error : new Error("Network error");
+    }
+  }
+
+  static async downloadBrowserProfile(
+    profileId: string,
+    accessToken: string
+  ): Promise<ArrayBuffer> {
+    try {
+      const response = await fetch(
+        `${config.api.baseUrl}/api/v1/integrations/vinted/profile/download/${profileId}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        ApiService.handleAuthError(response);
+        throw new Error("Failed to download profile");
+      }
+
+      return response.arrayBuffer();
+    } catch (error) {
+      throw error instanceof Error ? error : new Error("Network error");
+    }
+  }
 }

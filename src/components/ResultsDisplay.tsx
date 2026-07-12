@@ -1,249 +1,60 @@
-import React, { useState } from "react";
+import React from "react";
+import { CheckCircle2, Cookie, Shield } from "lucide-react";
 import { ExtractionData } from "../types";
 
 interface ResultsDisplayProps {
-  data: ExtractionData;
   onReset: () => void;
+  extractionData?: ExtractionData;
 }
 
-const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ data, onReset }) => {
-  const [expandedSection, setExpandedSection] = useState<string | null>(
-    "fingerprint",
-  );
-
-  const toggleSection = (section: string) => {
-    setExpandedSection(expandedSection === section ? null : section);
-  };
-
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-  };
+const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ onReset, extractionData }) => {
+  const cookieCount = extractionData?.authentication?.cookies?.length || 0;
 
   return (
-    <div className="results-container">
-      <div className="results-card">
-        <div className="results-header">
-          <h2>✅ Extraction Complete!</h2>
-          <p>Your Vinted session data has been successfully extracted</p>
-        </div>
-
-        <div className="results-summary">
-          <div className="summary-item">
-            <span className="summary-icon">📊</span>
-            <div className="summary-content">
-              <h4>Browser Fingerprint</h4>
-              <p>{Object.keys(data.fingerprint).length} properties captured</p>
+    <div className="mx-auto w-full max-w-md space-y-4">
+      <div className="relative overflow-hidden rounded-xl border border-green-300 bg-green-50/40 dark:border-green-400/20 dark:bg-green-950/20 p-8 shadow-md">
+        <div className="absolute inset-0 bg-linear-to-br from-green-100/40 to-transparent dark:from-green-500/5 dark:to-green-500/5" />
+        <div className="relative space-y-6">
+          <div className="flex items-center justify-center">
+            <div className="rounded-full bg-linear-to-br from-green-100 to-green-50 dark:bg-green-500/20 p-3">
+              <CheckCircle2 size={32} className="text-green-600 dark:text-green-400" />
             </div>
           </div>
 
-          <div className="summary-item">
-            <span className="summary-icon">🍪</span>
-            <div className="summary-content">
-              <h4>Cookies</h4>
-              <p>{data.authentication.cookies.length} cookies extracted</p>
-            </div>
+          <div className="space-y-2 text-center">
+            <h3 className="text-xl font-bold text-green-700 dark:text-foreground">You're all set!</h3>
+            <p className="text-sm text-gray-600 dark:text-muted-foreground leading-relaxed">
+              Your authentication has been verified and your account is now active on Vinbot.
+            </p>
           </div>
 
-          <div className="summary-item">
-            <span className="summary-icon">💾</span>
-            <div className="summary-content">
-              <h4>Storage Items</h4>
-              <p>
-                {data.authentication.origins.reduce(
-                  (sum, o) =>
-                    sum +
-                    (o.localStorage?.length || 0) +
-                    (o.sessionStorage?.length || 0),
-                  0,
-                )}{" "}
-                items stored
-              </p>
-            </div>
-          </div>
-
-          <div className="summary-item">
-            <span className="summary-icon">🌐</span>
-            <div className="summary-content">
-              <h4>Origins</h4>
-              <p>{data.authentication.origins.length} storage origins</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="results-details">
-          {/* Fingerprint Section */}
-          <div className="detail-section">
-            <div
-              className="section-header"
-              onClick={() => toggleSection("fingerprint")}
-            >
-              <span className="section-title">📊 Browser Fingerprint</span>
-              <span className="toggle-icon">
-                {expandedSection === "fingerprint" ? "▼" : "▶"}
-              </span>
-            </div>
-            {expandedSection === "fingerprint" && (
-              <div className="section-content">
-                <div className="fingerprint-grid">
-                  <div className="fingerprint-item">
-                    <label>Browser</label>
-                    <span>{data.fingerprint.browser}</span>
-                  </div>
-                  <div className="fingerprint-item">
-                    <label>Platform</label>
-                    <span>{data.fingerprint.platform}</span>
-                  </div>
-                  <div className="fingerprint-item">
-                    <label>Timezone</label>
-                    <span>{data.fingerprint.timezone}</span>
-                  </div>
-                  <div className="fingerprint-item">
-                    <label>Locale</label>
-                    <span>{data.fingerprint.locale}</span>
-                  </div>
-                  <div className="fingerprint-item">
-                    <label>Screen Resolution</label>
-                    <span>
-                      {data.fingerprint.screen.width}x
-                      {data.fingerprint.screen.height}
-                    </span>
-                  </div>
-                  <div className="fingerprint-item">
-                    <label>Hardware Cores</label>
-                    <span>{data.fingerprint.hardwareConcurrency}</span>
-                  </div>
-                  <div className="fingerprint-item">
-                    <label>Device Memory</label>
-                    <span>{data.fingerprint.deviceMemory} GB</span>
-                  </div>
-                  <div className="fingerprint-item">
-                    <label>Firefox Version</label>
-                    <span>{data.fingerprint.systemInfo.firefoxVersion}</span>
-                  </div>
-                </div>
+          {cookieCount > 0 && (
+            <div className="flex items-center gap-3 rounded-lg border border-green-400/60 bg-linear-to-r from-green-100/60 to-green-50/40 dark:border-green-400/20 dark:bg-green-500/10 px-4 py-3 shadow-xs">
+              <div className="rounded-lg bg-green-300/50 dark:bg-green-400/20 p-2">
+                <Cookie size={16} className="text-green-700 dark:text-green-400 shrink-0" />
               </div>
-            )}
-          </div>
-
-          {/* Cookies Section */}
-          <div className="detail-section">
-            <div
-              className="section-header"
-              onClick={() => toggleSection("cookies")}
-            >
-              <span className="section-title">
-                🍪 Cookies ({data.authentication.cookies.length})
-              </span>
-              <span className="toggle-icon">
-                {expandedSection === "cookies" ? "▼" : "▶"}
-              </span>
-            </div>
-            {expandedSection === "cookies" && (
-              <div className="section-content">
-                <div className="table-container">
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>Name</th>
-                        <th>Domain</th>
-                        <th>Secure</th>
-                        <th>HttpOnly</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.authentication.cookies.map((cookie, idx) => (
-                        <tr key={idx}>
-                          <td className="mono">{cookie.name}</td>
-                          <td>{cookie.domain}</td>
-                          <td>{cookie.secure ? "✓" : "✗"}</td>
-                          <td>{cookie.httpOnly ? "✓" : "✗"}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+              <div className="text-sm">
+                <span className="font-bold text-green-900 dark:text-green-300">{cookieCount}</span>
+                <span className="text-green-700 dark:text-green-400/70"> {cookieCount === 1 ? 'cookie' : 'cookies'} retrieved</span>
               </div>
-            )}
-          </div>
-
-          {/* Storage Origins Section */}
-          <div className="detail-section">
-            <div
-              className="section-header"
-              onClick={() => toggleSection("storage")}
-            >
-              <span className="section-title">
-                💾 Storage Origins ({data.authentication.origins.length})
-              </span>
-              <span className="toggle-icon">
-                {expandedSection === "storage" ? "▼" : "▶"}
-              </span>
             </div>
-            {expandedSection === "storage" && (
-              <div className="section-content">
-                {data.authentication.origins.map((origin, idx) => (
-                  <div key={idx} className="origin-block">
-                    <h4>🌐 {origin.origin}</h4>
-                    {origin.localStorage && origin.localStorage.length > 0 && (
-                      <div className="storage-subsection">
-                        <h5>LocalStorage ({origin.localStorage.length})</h5>
-                        <ul className="storage-list">
-                          {origin.localStorage.map((item, itemIdx) => (
-                            <li key={itemIdx}>
-                              <span className="storage-key">{item.name}</span>
-                              <button
-                                className="copy-btn"
-                                onClick={() => copyToClipboard(item.value)}
-                                title="Copy value"
-                              >
-                                📋
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    {origin.sessionStorage &&
-                      origin.sessionStorage.length > 0 && (
-                        <div className="storage-subsection">
-                          <h5>
-                            SessionStorage ({origin.sessionStorage.length})
-                          </h5>
-                          <ul className="storage-list">
-                            {origin.sessionStorage.map((item, itemIdx) => (
-                              <li key={itemIdx}>
-                                <span className="storage-key">{item.name}</span>
-                                <button
-                                  className="copy-btn"
-                                  onClick={() => copyToClipboard(item.value)}
-                                  title="Copy value"
-                                >
-                                  📋
-                                </button>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          )}
         </div>
+      </div>
 
-        <div className="results-actions">
-          <button className="btn btn-primary" onClick={onReset}>
-            🔄 New Extraction
-          </button>
+      <button
+        onClick={onReset}
+        className="w-full rounded-lg border border-green-400 bg-green-100/70 px-4 py-2.5 text-sm font-semibold text-green-800 transition-all duration-200 hover:bg-green-200/60 hover:border-green-500 dark:border-green-400/30 dark:bg-green-500/15 dark:text-green-300 dark:hover:bg-green-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+      >
+        Link Another Account
+      </button>
+
+      <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50/50 dark:border-amber-400/20 dark:bg-amber-950/20 px-4 py-3 shadow-xs">
+        <div className="rounded-lg bg-amber-200/60 dark:bg-amber-400/20 p-2 mt-0.5 shrink-0">
+          <Shield size={16} className="text-amber-700 dark:text-amber-400" />
         </div>
-
-        <div className="security-note">
-          <p>
-            ⚠️ <strong>Security Notice:</strong> Keep this data secure. Do not
-            share your session cookies or authentication tokens with anyone.
-            Your data has been saved locally.
-          </p>
+        <div className="text-xs leading-relaxed text-amber-900 dark:text-amber-300">
+          <strong>Security Notice:</strong> Keep your login credentials secure. Do not share your session data with anyone.
         </div>
       </div>
     </div>

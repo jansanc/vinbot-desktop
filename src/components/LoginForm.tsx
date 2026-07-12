@@ -1,6 +1,5 @@
 import React, { useState } from "react";
-import { Moon, Sun } from "lucide-react";
-import { useTheme } from "../context/ThemeContext";
+import ThemeToggle from "./ThemeToggle";
 
 interface LoginFormProps {
   onSubmit: (email: string, password: string) => Promise<void>;
@@ -13,7 +12,6 @@ export default function LoginForm({
   isLoading,
   error,
 }: LoginFormProps) {
-  const { theme, toggleTheme } = useTheme();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -44,17 +42,9 @@ export default function LoginForm({
 
   return (
     <div className="login-container">
-      <button
-        onClick={toggleTheme}
-        className="theme-toggle-btn"
-        aria-label={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
-      >
-        {theme === "light" ? (
-          <Moon size={20} />
-        ) : (
-          <Sun size={20} />
-        )}
-      </button>
+      <div style={{ position: "absolute", top: "1.25rem", right: "1.25rem", zIndex: 10 }}>
+        <ThemeToggle />
+      </div>
 
       <div className="login-card">
         <div className="login-header">

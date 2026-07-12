@@ -216,7 +216,21 @@ export function extractCookies(
     return results[0].values
       .filter(([, , host]) => {
         const hostStr = ((host as string) || "").toLowerCase();
-        return hostStr.includes(vintedHostname);
+        // Remove leading dot for comparison
+        const normalizedHost = hostStr.replace(/^\./, "");
+        const normalizedHostname = vintedHostname.replace(/^\./, "");
+
+        // Match if it's an exact match or a subdomain match
+        const matches =
+          normalizedHost === normalizedHostname ||
+          normalizedHost.endsWith("." + normalizedHostname);
+
+        if (!matches) {
+          console.log(`[Cookies] Cookie domain`, hostStr, "doesn't match", vintedHostname);
+        } else {
+          console.log(`[Cookies] ✓ Matched cookie domain:`, hostStr);
+        }
+        return matches;
       })
       .map(
         ([name, value, host, pathVal, secure, httpOnly, sameSite, expiry]) =>
@@ -256,7 +270,15 @@ export function extractLocalStorage(
     readdirSync(storageDir).forEach((encodedOrigin) => {
       const origin = encodedOrigin.replace(/\+{3}/g, "://").replace(/\^/g, ":");
 
-      if (!origin.includes(vintedHostname)) {
+      const originHostname = new URL(origin).hostname.replace(/^www\./, "");
+      const normalizedOriginHostname = originHostname.replace(/^\./, "");
+      const normalizedVintedHostname = vintedHostname.replace(/^\./, "");
+
+      const matches =
+        normalizedOriginHostname === normalizedVintedHostname ||
+        normalizedOriginHostname.endsWith("." + normalizedVintedHostname);
+
+      if (!matches) {
         return;
       }
 

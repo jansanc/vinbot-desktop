@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
+  darkMode: 'selector',
   content: [
     "./public/index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
@@ -40,11 +41,32 @@ module.exports = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        success: {
+          DEFAULT: "hsl(var(--success))",
+          foreground: "hsl(var(--success-foreground))",
+        },
+        warning: {
+          DEFAULT: "hsl(var(--warning))",
+          foreground: "hsl(var(--warning-foreground))",
+        },
+        info: {
+          DEFAULT: "hsl(var(--info))",
+          foreground: "hsl(var(--info-foreground))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+      },
+      transitionDuration: {
+        fast: "150ms",
+        base: "200ms",
+      },
+      boxShadow: {
+        "sm-light": "0 1px 2px rgba(0, 0, 0, 0.05)",
+        "md-light": "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
+        "lg-light": "0 20px 25px -5px rgba(0, 0, 0, 0.1)",
       },
     },
   },

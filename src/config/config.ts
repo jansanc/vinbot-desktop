@@ -13,6 +13,9 @@ export const config = {
       },
       vinted: {
         desktopSession: "/api/v1/vinted/auth/desktop-session",
+        sessionUpload: "/api/v1/integrations/vinted/session/upload",
+        profileUpload: "/api/v1/integrations/vinted/profile/upload",
+        profileDownload: "/api/v1/integrations/vinted/profile/download",
       },
     },
   },

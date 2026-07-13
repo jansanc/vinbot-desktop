@@ -5,6 +5,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/
 import { Input } from "./ui/input";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import { Label } from "./ui/label";
+import { useError } from "../contexts/ErrorContext";
+import { ErrorHandler } from "../utils/errorHandler";
 
 interface LoginProgress {
   step: string;
@@ -21,6 +23,7 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
   accessToken: initialAccessToken = "",
   userId: initialUserId = "",
 }) => {
+  const { addError } = useError();
   const [url, setUrl] = useState("https://www.vinted.es/member/signup/select_type?ref_url=%2F");
   const [profileName, setProfileName] = useState("");
   const [browser, setBrowser] = useState<"chrome" | "firefox" | "edge">("chrome");
@@ -34,6 +37,7 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
     const electronAPI = (window as any).electronAPI;
@@ -41,13 +45,61 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
 
     const handleProgress = (data: LoginProgress) => {
       console.log("[UI] Progress:", data);
-      setProgress((prev) => [...prev, data]);
+
+      // Detect error/warning messages from progress events
+      const step = data.step.toUpperCase();
+      const isError = step.includes("ERROR") || step.includes("FAILED");
+      const isWarning = step.includes("WARNING");
+
+      if (isError || isWarning) {
+        // Extract clean message (remove emoji prefix and formatting)
+        let cleanMsg = data.message
+          .replace(/^[⚠️❌🔴📛✋]+\s*/, "") // Remove emoji
+          .replace(/^[^:]+:\s*/, ""); // Remove "Step:" prefix
+
+        // Try to extract actual error message if JSON is embedded
+        try {
+          if (cleanMsg.includes("{") && cleanMsg.includes("}")) {
+            const jsonMatch = cleanMsg.match(/\{.*\}/);
+            if (jsonMatch) {
+              const jsonObj = JSON.parse(jsonMatch[0]);
+              if (jsonObj.message) {
+                cleanMsg = jsonObj.message;
+              }
+            }
+          }
+        } catch (e) {
+          // Keep original message if JSON parsing fails
+        }
+
+        const progressError = new Error(cleanMsg);
+        console.log(`[UI] Progress ${isError ? "error" : "warning"} detected:`, cleanMsg);
+
+        // Mark that an error occurred - this will stop showing progress
+        setHasError(true);
+        setProgress([]);
+        setResult(null);
+
+        addError(progressError, `InteractiveLoginFlow.IPC.${step}`);
+      } else if (!hasError) {
+        // Only add progress if no error has occurred yet
+        setProgress((prev) => [...prev, data]);
+      }
     };
 
     const handleError = (data: { error: string; timestamp: string }) => {
-      console.log("[UI] Error:", data);
+      console.log("[UI] ERROR RECEIVED - Stopping everything:", data);
+      const error = new Error(data.error);
+      addError(error, "InteractiveLoginFlow.IPC");
       setError(data.error);
       setIsLoading(false);
+      setHasError(true);
+
+      // Clear progress when error occurs - show only the error
+      setProgress([]);
+      setResult(null);
+
+      console.log("[UI] Progress cleared, error-only state activated");
     };
 
     // Register listeners and get references for cleanup
@@ -66,13 +118,19 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
 
   const handleStartLogin = async () => {
     if (!vintedEmail.trim()) {
-      setError("Please enter your Vinted email");
+      const validationError = ErrorHandler.createError(
+        "VALIDATION_ERROR",
+        "Vinted email is required",
+        { field: "vintedEmail" }
+      );
+      addError(validationError, "InteractiveLoginFlow");
       return;
     }
 
     setError(null);
     setProgress([]);
     setResult(null);
+    setHasError(false);
     setIsLoading(true);
 
     try {
@@ -80,6 +138,14 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
       if (!electronAPI) {
         throw new Error("Electron API not available");
       }
+
+      // Validate and refresh token if needed
+      let currentToken = accessToken.trim();
+      if (!currentToken) {
+        throw new Error("Session error: Your session may have expired. Please log in again.");
+      }
+
+      console.log("[InteractiveLoginFlow] Using access token for login");
 
       // Auto-generate profile name if not provided
       const finalProfileName = profileName.trim() || `vinted_${Date.now()}`;
@@ -92,18 +158,28 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
         userEmail: userEmail.trim(),
         vintedEmail: vintedEmail.trim(),
         vintedMemberId: vintedMemberId.trim() || undefined,
-        accessToken: accessToken.trim(),
+        accessToken: currentToken,
         uploadToS3: true,
       });
 
       if (response.success) {
         setResult(response.session);
       } else {
-        setError(response.error || "Login failed");
+        const errorMsg = response.message || response.error || "Login failed";
+        const err = new Error(errorMsg);
+        addError(err, "InteractiveLoginFlow");
+        setError(errorMsg);
       }
     } catch (err) {
+      addError(err, "InteractiveLoginFlow.handleStartLogin");
       const msg = err instanceof Error ? err.message : String(err);
-      setError(`Failed to start: ${msg}`);
+
+      // Check if this is a session/auth error
+      if (msg.includes("Session error") || msg.includes("access token") || msg.includes("not authenticated")) {
+        setError("Your session has expired. Please log in again from the login page.");
+      } else {
+        setError(`Failed to start: ${msg}`);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -113,6 +189,7 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
     setProgress([]);
     setResult(null);
     setError(null);
+    setHasError(false);
     setShowAdvanced(false);
   };
 

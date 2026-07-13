@@ -5,8 +5,12 @@ import UserHeader from "./components/UserHeader";
 import { AuthState } from "./types";
 import { AuthService, AuthUser } from "./services/auth.service";
 import { config } from "./config/config";
+import { ErrorProvider } from "./contexts/ErrorContext";
+import { ErrorToastContainer } from "./components/ErrorToast";
+import { useError } from "./contexts/ErrorContext";
 
-function App() {
+function AppContent() {
+  const { errors, removeError } = useError();
   const [authState, setAuthState] = useState<AuthState>("unauthenticated");
   const [user, setUser] = useState<AuthUser | null>(null);
   const [authError, setAuthError] = useState<string>("");
@@ -15,16 +19,45 @@ function App() {
 
 
   useEffect(() => {
-    // Check for existing session on mount
-    const existingUser = AuthService.getUser();
-    const existingSession = AuthService.getSession();
+    // Check for existing session on mount and attempt refresh if needed
+    const initializeAuth = async () => {
+      const existingUser = AuthService.getUser();
+      const existingSession = AuthService.getSession();
 
-    if (existingUser && existingSession && AuthService.isSessionValid()) {
-      setUser(existingUser);
-      setAuthState("authenticated");
-    } else {
-      AuthService.clearSession();
-    }
+      if (!existingUser || !existingSession) {
+        AuthService.clearSession();
+        return;
+      }
+
+      if (AuthService.isSessionValid()) {
+        setUser(existingUser);
+        setAuthState("authenticated");
+        console.log("[App] Session valid, user authenticated");
+      } else {
+        console.log("[App] Session expired, attempting to refresh...");
+        try {
+          const refreshedSession = await AuthService.refreshSession();
+          if (refreshedSession) {
+            // Refresh successful, get updated user
+            const updatedUser = AuthService.getUser();
+            if (updatedUser) {
+              setUser(updatedUser);
+              setAuthState("authenticated");
+              console.log("[App] Session refreshed successfully");
+              return;
+            }
+          }
+        } catch (error) {
+          console.error("[App] Token refresh failed:", error);
+        }
+
+        // If we get here, refresh failed or user data is missing
+        AuthService.clearSession();
+        setAuthError("Your session has expired. Please log in again.");
+      }
+    };
+
+    initializeAuth();
 
     // Listen for unauthorized (401) errors
     const handleUnauthorized = async (event: Event) => {
@@ -82,31 +115,45 @@ function App() {
   // Show login form if not authenticated
   if (authState !== "authenticated" || !user) {
     return (
-      <LoginForm
-        onSubmit={handleLogin}
-        isLoading={isAuthenticating}
-        error={authError}
-      />
+      <>
+        <LoginForm
+          onSubmit={handleLogin}
+          isLoading={isAuthenticating}
+          error={authError}
+        />
+        <ErrorToastContainer errors={errors} onDismiss={removeError} />
+      </>
     );
   }
 
   // Show interactive login if authenticated
   return (
-    <div className="flex min-h-screen flex-col bg-background">
-      <UserHeader user={user} onLogout={handleLogout} isLoggingOut={isLoggingOut} />
-      <main className="flex flex-1 flex-col items-center justify-center bg-muted/40 px-4">
-        <InteractiveLoginFlow
-          accessToken={AuthService.getSession()?.accessToken || ""}
-          userId={user?.id || ""}
-        />
-      </main>
+    <>
+      <div className="flex min-h-screen flex-col bg-background">
+        <UserHeader user={user} onLogout={handleLogout} isLoggingOut={isLoggingOut} />
+        <main className="flex flex-1 flex-col items-center justify-center bg-muted/40 px-4">
+          <InteractiveLoginFlow
+            accessToken={AuthService.getSession()?.accessToken || ""}
+            userId={user?.id || ""}
+          />
+        </main>
 
-      <footer className="border-t border-border bg-card px-6 py-6 text-center">
-        <p className="text-xs font-normal text-muted-foreground">
-          Browser profiles are compressed and uploaded to S3 for secure storage
-        </p>
-      </footer>
-    </div>
+        <footer className="border-t border-border bg-card px-6 py-6 text-center">
+          <p className="text-xs font-normal text-muted-foreground">
+            Browser profiles are compressed and uploaded to S3 for secure storage
+          </p>
+        </footer>
+      </div>
+      <ErrorToastContainer errors={errors} onDismiss={removeError} />
+    </>
+  );
+}
+
+function App() {
+  return (
+    <ErrorProvider>
+      <AppContent />
+    </ErrorProvider>
   );
 }
 

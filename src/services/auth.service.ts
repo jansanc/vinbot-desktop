@@ -192,7 +192,19 @@ export class AuthService {
     }
 
     const now = Date.now();
-    return now < session.expiresAt * 1000;
+    // expiresAt is in seconds from server, so multiply by 1000 to get milliseconds
+    // Add 60 second buffer to refresh before actual expiry
+    const expirationTime = session.expiresAt * 1000;
+    const bufferTime = 60 * 1000; // 60 second buffer
+
+    console.log("[Auth] Session validity check:", {
+      now: new Date(now).toISOString(),
+      expiresAt: new Date(expirationTime).toISOString(),
+      isValid: now < (expirationTime - bufferTime),
+      timeUntilExpiry: Math.round((expirationTime - now) / 1000) + "s",
+    });
+
+    return now < (expirationTime - bufferTime);
   }
 
   static async logout(): Promise<void> {

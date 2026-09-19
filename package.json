@@ -14,7 +14,7 @@
     "react-build": "npm run css:build && craco build",
     "react-test": "craco test",
     "react-eject": "react-scripts eject",
-    "electron-dev": "npm run compile:main && concurrently \"npm run css:watch\" \"cross-env PORT=3002 BROWSER=none npm run react-start\" \"wait-on http://localhost:3002 && cross-env ELECTRON_DEV=true electron .\"",
+    "electron-dev": "node dev-start.js",
     "electron-build": "npm run compile:main && npm run react-build && electron-builder",
     "build": "npm run react-build",
     "start": "npm run electron-dev",

@@ -1263,6 +1263,7 @@ function registerIPCHandlers() {
     accessToken: string;
     vintedAccountId: string;
     userId: string;
+    vintedEmail: string;
   }) => {
     const sendProgress = (step: string, message: string) => {
       console.log(`[IPC] ${step}: ${message}`);

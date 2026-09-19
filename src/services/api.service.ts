@@ -289,63 +289,61 @@ export class ApiService {
     accessToken: string,
     payload: {
       browser: "chrome" | "firefox" | "edge";
-      profileId: string;
+      profileId?: string;
       profileName: string;
-      vintedAccountId: string;
-      userId: string;
-      profileData: Buffer | Blob | string; // Binary or base64 string
+      vintedAccountId?: string;
+      userId?: string;
+      profileData: Buffer | Blob | ArrayBuffer;
       compressedSize: number;
-      originalSize: number;
-      metadata: string;
+      originalSize?: number;
+      metadata?: string;
       userEmail?: string;
-      vintedEmail?: string;
+      vintedEmail: string;
       vintedMemberId?: string;
     }
-  ): Promise<any> {
+  ): Promise<{ id: string; storagePath: string; compressedSize: number }> {
     try {
       let binaryData: ArrayBuffer | Uint8Array;
 
-      if (typeof payload.profileData === "string") {
-        // Always send as binary; base64 strings are decoded first
-        const decoded = Buffer.from(payload.profileData, "base64");
-        binaryData = decoded.buffer.slice(
-          decoded.byteOffset,
-          decoded.byteOffset + decoded.byteLength
-        );
-      } else if (payload.profileData instanceof Buffer) {
-        binaryData = payload.profileData.buffer.slice(
-          payload.profileData.byteOffset,
-          payload.profileData.byteOffset + payload.profileData.byteLength
-        );
+      if (payload.profileData instanceof ArrayBuffer) {
+        binaryData = new Uint8Array(payload.profileData);
       } else if (payload.profileData instanceof Blob) {
-        binaryData = await payload.profileData.arrayBuffer();
+        binaryData = new Uint8Array(await payload.profileData.arrayBuffer());
+      } else if (Buffer.isBuffer(payload.profileData)) {
+        binaryData = new Uint8Array(
+          payload.profileData.buffer,
+          payload.profileData.byteOffset,
+          payload.profileData.byteLength
+        );
       } else {
         throw new Error("Invalid profile data type");
       }
 
-      const headers = {
-        "Content-Type": "application/octet-stream",
+      const headers: Record<string, string> = {
+        "Content-Type": "application/gzip",
         Authorization: `Bearer ${accessToken}`,
-        // Send metadata as headers to avoid parsing issues
         "X-Browser": payload.browser,
-        "X-Profile-Id": payload.profileId,
         "X-Profile-Name": payload.profileName,
-        "X-Vinted-Account-Id": payload.vintedAccountId,
-        "X-User-Id": payload.userId,
+        "X-Vinted-Email": payload.vintedEmail,
         "X-Compressed-Size": String(payload.compressedSize),
-        "X-Original-Size": String(payload.originalSize),
-        "X-Metadata": payload.metadata,
-        ...(payload.userEmail && { "X-User-Email": payload.userEmail }),
-        ...(payload.vintedEmail && { "X-Vinted-Email": payload.vintedEmail }),
-        ...(payload.vintedMemberId && { "X-Vinted-Member-Id": payload.vintedMemberId }),
       };
+
+      if (payload.vintedMemberId) {
+        headers["X-Vinted-Member-Id"] = payload.vintedMemberId;
+      }
+      if (payload.metadata) {
+        headers["X-Metadata"] = payload.metadata;
+      }
+      if (payload.vintedAccountId) {
+        headers["X-Vinted-Account-Id"] = payload.vintedAccountId;
+      }
 
       const response = await fetch(
         `${config.api.baseUrl}${config.api.endpoints.vinted.profileUpload}`,
         {
           method: "POST",
           headers,
-          body: new Blob([binaryData], { type: "application/octet-stream" }),
+          body: new Blob([binaryData], { type: "application/gzip" }),
         }
       );
 
@@ -358,7 +356,7 @@ export class ApiService {
           // Response might not be JSON
         }
         const errorMsg = errorData?.data?.message || errorData?.message || response.statusText;
-        console.error("[ApiService] Upload failed with status", response.status, ":", errorMsg);
+        console.error("[ApiService] Profile upload failed with status", response.status, ":", errorMsg);
         throw new Error(
           `Upload failed (${response.status}): ${errorMsg}`
         );
@@ -373,14 +371,15 @@ export class ApiService {
         ) {
           throw new UnauthorizedError(data.message || "User not authenticated. Please log in again.");
         }
-        console.error("[ApiService] Upload rejected by API:", data.message || data);
+        console.error("[ApiService] Profile upload rejected by API:", data.message || data);
         throw new Error(data.message || "Failed to upload profile");
       }
 
-      if (data?.data?.storagePath) {
-        data.data.storageLocation = data.data.storagePath;
-      }
-      return data;
+      return {
+        id: data.data?.id || "",
+        storagePath: data.data?.storagePath || "",
+        compressedSize: data.data?.compressedSize || payload.compressedSize,
+      };
     } catch (error) {
       throw error instanceof Error ? error : new Error("Network error");
     }

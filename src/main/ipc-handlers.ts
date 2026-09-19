@@ -1334,19 +1334,21 @@ function registerIPCHandlers() {
         profileName: options.profileName,
         vintedAccountId: options.vintedAccountId,
         userId: options.userId,
-        profileData: buffer, // Complete profile as tar.gz binary
+        profileData: buffer,
         compressedSize: compressedSize,
-        originalSize: compressedSize, // Full archive size
+        originalSize: compressedSize,
         metadata: JSON.stringify({
           compressedAt: new Date().toISOString(),
           browser: options.browser,
           profileId: options.profileId,
           type: "tar.gz",
         }),
+        vintedEmail: options.vintedEmail,
       });
       const uploadTime = Date.now() - startUpload;
       sendProgress("API_DONE", `✓ API upload complete in ${uploadTime}ms`);
-      sendProgress("PROFILE_ID", `Profile ID: ${result.data.id}`);
+      sendProgress("PROFILE_ID", `Profile ID: ${result.id}`);
+      sendProgress("S3_PATH", `S3 Path: ${result.storagePath}`);
 
       // Step 4: Clean up temp file
       sendProgress("CLEANUP", `Cleaning up temp files...`);
@@ -1358,9 +1360,10 @@ function registerIPCHandlers() {
 
       return {
         success: true,
-        profileId: result.data.id,
+        profileId: result.id,
         message: `Profile uploaded successfully to S3`,
-        storageLocation: result.data.storageLocation,
+        storageLocation: result.storagePath,
+        profile_archive_size: compressedSize,
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -1465,7 +1468,7 @@ function registerIPCHandlers() {
             profileName: profile.name,
             vintedAccountId: options.vintedAccountId,
             userId: options.userId,
-            profileData: buffer, // Send as binary tar.gz Buffer
+            profileData: buffer,
             compressedSize: compressedSize,
             originalSize: originalSize,
             metadata: JSON.stringify({
@@ -1477,7 +1480,8 @@ function registerIPCHandlers() {
           });
           const uploadTime = Date.now() - startUpload;
           console.log(`[IPC] ✓ Uploaded in ${uploadTime}ms`);
-          console.log(`[IPC] Profile ID: ${result.data.id}`);
+          console.log(`[IPC] Profile ID: ${result.id}`);
+          console.log(`[IPC] S3 Path: ${result.storagePath}`);
 
           // Clean up
           console.log(`[IPC] Cleaning up...`);
@@ -1490,7 +1494,7 @@ function registerIPCHandlers() {
           results.push({
             profileName: profile.name,
             success: true,
-            profileId: result.data.id,
+            profileId: result.id,
             compressedSize: compressedSize,
           });
         } catch (error) {

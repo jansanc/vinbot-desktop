@@ -2,6 +2,7 @@ import { ipcMain, dialog, app } from "electron";
 import path from "path";
 import os from "os";
 import * as fs from "fs";
+import * as http from "http";
 import { readFileSync, existsSync, readdirSync, writeFileSync, mkdirSync, unlinkSync, statSync } from "fs";
 import { spawn } from "child_process";
 import { extractFirefoxProfileData } from "./extractors/firefox.extractor";
@@ -12,6 +13,7 @@ import { SessionExtractor, type ExtractedSession } from "../modules/vinted/sessi
 import { InteractiveSessionExtractor } from "../modules/vinted/session/interactiveSessionExtractor";
 import { SessionUploadService } from "../modules/vinted/session/sessionUpload.service";
 import { ProfileUploader } from "../modules/vinted/profile/profileUploader";
+import { constructProfileS3Path } from "../utils/s3-paths";
 
 // Dynamically import sql.js
 const initSqlJs = require("sql.js");
@@ -658,6 +660,8 @@ function registerIPCHandlers() {
       // This ensures we only upload the profile if the rest of the flow will succeed
       let healthCheckResult: any = null;
 
+      // COMMENTED OUT: Session health check disabled
+      /*
       if (uploadToS3 && userEmail && vintedEmail && hasValidToken) {
         try {
           sendProgress("VALIDATION_START", `🔍 Validating session before upload...`);
@@ -746,6 +750,7 @@ function registerIPCHandlers() {
         console.log(`[IPC] Profile upload skipped - missing requirements: userEmail=${!!userEmail}, vintedEmail=${!!vintedEmail}, accessToken=${!!accessToken}`);
         sendProgress("PROFILE_UPLOAD_SKIPPED", `⏭️ Profile upload skipped (missing configuration)`);
       }
+      */
 
       // Step 2: Upload profile to S3 (only if validation passed)
       let profileUploadResult: any = null;
@@ -759,8 +764,23 @@ function registerIPCHandlers() {
           const archiveBuffer = fs.readFileSync(result.profile_archive_path);
           const { config } = await import("../config/config");
 
+          // Construct persistent S3 path (account-based, not timestamp-based)
+          // This allows the backend to refresh and update the profile over time
+          const s3Path = constructProfileS3Path(
+            userEmail, // Use email as stable user ID
+            vintedMemberId || profileName,
+            browser
+          );
+
+          sendProgress("S3_PATH", `📦 Persistent S3 path: ${s3Path.fullPath}`);
+          console.log(`[IPC] Using persistent S3 path:`, {
+            fullPath: s3Path.fullPath,
+            bucket: s3Path.bucket,
+            key: s3Path.key,
+          });
+
           const headers = {
-            "Content-Type": "application/gzip",
+            "Content-Type": "application/octet-stream",
             "Authorization": `Bearer ${accessToken}`,
             "x-browser": browser,
             "x-profile-id": profileName,
@@ -770,6 +790,7 @@ function registerIPCHandlers() {
             "x-user-email": userEmail || "",
             "x-vinted-email": vintedEmail,
             "x-vinted-member-id": vintedMemberId || "",
+            "x-s3-key": s3Path.key, // Persistent S3 path (not timestamp-based)
             "x-compressed-size": String(result.profile_archive_size),
             "x-original-size": String(result.profile_archive_size),
             "x-metadata": JSON.stringify({
@@ -777,6 +798,7 @@ function registerIPCHandlers() {
               loginUrl: url,
               extractedAt: new Date(result.extracted_at).toISOString(),
               type: "interactive-login",
+              s3Path: s3Path.fullPath,
             }),
           };
 
@@ -787,17 +809,47 @@ function registerIPCHandlers() {
             vintedAccountId: headers["x-vinted-account-id"],
             userId: headers["x-user-id"],
             vintedEmail: headers["x-vinted-email"],
+            s3Key: headers["x-s3-key"],
             metadataLength: headers["x-metadata"].length,
           });
 
-          const profileUploadResponse = await fetch(
-            `${config.api.baseUrl}${config.api.endpoints.vinted.profileUpload}`,
-            {
-              method: "POST",
-              headers,
-              body: archiveBuffer,
-            }
-          );
+          const profileUploadResponse = await new Promise<{
+            ok: boolean;
+            status: number;
+            text: () => Promise<string>;
+            json: () => Promise<any>;
+          }>((resolve, reject) => {
+            const urlObj = new URL(`${config.api.baseUrl}${config.api.endpoints.vinted.profileUpload}`);
+            const bodyBuffer = archiveBuffer;
+            const req = http.request(
+              {
+                hostname: urlObj.hostname,
+                port: urlObj.port,
+                path: `${urlObj.pathname}${urlObj.search}`,
+                method: "POST",
+                headers: {
+                  ...headers,
+                  "Content-Length": String(bodyBuffer.length),
+                },
+              },
+              (res) => {
+                const chunks: Buffer[] = [];
+                res.on("data", (chunk) => chunks.push(chunk));
+                res.on("end", () => {
+                  const text = Buffer.concat(chunks).toString("utf-8");
+                  resolve({
+                    ok: res.statusCode !== undefined && res.statusCode < 400,
+                    status: res.statusCode || 0,
+                    text: () => Promise.resolve(text),
+                    json: () => Promise.resolve(JSON.parse(text)),
+                  });
+                });
+              }
+            );
+            req.on("error", (err) => reject(err));
+            req.write(bodyBuffer);
+            req.end();
+          });
 
           if (!profileUploadResponse.ok) {
             const errorText = await profileUploadResponse.text();
@@ -865,6 +917,8 @@ function registerIPCHandlers() {
 
       // Step 3: Check session health (if not already done in pre-flight validation)
       // Skip if S3 upload was disabled and we're not doing pre-flight validation
+      // COMMENTED OUT: Session health check disabled
+      /*
       if (!uploadToS3 && userEmail && vintedEmail && hasValidToken && !healthCheckResult) {
         try {
           sendProgress("HEALTH_CHECK_START", `🏥 Checking session health and profile validity...`);
@@ -964,6 +1018,7 @@ function registerIPCHandlers() {
           sendProgress("HEALTH_CHECK_SKIPPED", `⏭️ Health check skipped (uploadToS3=${uploadToS3}, missing: ${missing.join(", ")})`);
         }
       }
+      */
 
       // Check if there were any critical errors before proceeding to link
       if (profileUploadResult && !profileUploadResult.success) {

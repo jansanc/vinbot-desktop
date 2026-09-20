@@ -1,4 +1,4 @@
-import { ApiService, LoginResponse } from "./api.service";
+import { ApiBridge as ApiService } from "./api.bridge";
 import { config } from "../config/config";
 import { storage } from "../config/storage";
 

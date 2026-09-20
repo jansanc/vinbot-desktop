@@ -1,6 +1,19 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("electronAPI", {
+  // Authenticated API calls. These run in the main process, which sends no
+  // Origin header, so the API's CORS policy never applies. The renderer must
+  // not fetch api.vinbot.app directly: a packaged build is a file:// page and
+  // its Origin is the literal string "null", which the API rejects.
+  auth: {
+    login: (credentials) => ipcRenderer.invoke("api:login", credentials),
+    me: (accessToken) => ipcRenderer.invoke("api:me", accessToken),
+    refresh: (refreshToken) => ipcRenderer.invoke("api:refresh", refreshToken),
+    logout: (accessToken) => ipcRenderer.invoke("api:logout", accessToken),
+    storeDesktopSession: (payload) =>
+      ipcRenderer.invoke("api:storeDesktopSession", payload),
+    getStoredSession: () => ipcRenderer.invoke("api:getStoredSession"),
+  },
   extractVintedSession: (options) =>
     ipcRenderer.invoke("extract:vinted:session", options),
   saveExtraction: (data, saveMethod, options) =>

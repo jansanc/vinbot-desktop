@@ -1,6 +1,6 @@
 import type { Fingerprint } from "../../../types";
 import { ApiService } from "../../../services/api.service";
-import { AuthService } from "../../../services/auth.service";
+import { tokenStore } from "../../../main/api/token-store";
 
 export interface AuthData {
   cookies: Array<{
@@ -36,12 +36,12 @@ export async function saveFirefoxExtractionData(
   auth: AuthData,
   userEmail: string,
   vintedMemberId?: string,
+  accessToken?: string,
 ): Promise<StoreDesktopSessionResult> {
   try {
-    const session = AuthService.getSession();
-    if (!session) {
-      throw new Error("No authenticated session found. Please login first.");
-    }
+    // Runs in the main process: the session comes from the main-process token
+    // store, never from the renderer's localStorage (unreachable from here).
+    const token = tokenStore.resolveAccessToken(accessToken);
 
     console.log("Storing Firefox extraction data via API:", {
       vintedEmail,
@@ -52,7 +52,7 @@ export async function saveFirefoxExtractionData(
     });
 
     const response = await ApiService.storeDesktopSession(
-      session.accessToken,
+      token,
       {
         vintedEmail,
         browserFingerprint: fingerprint,

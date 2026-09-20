@@ -1,6 +1,32 @@
+type IpcResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: { name: string; message: string } };
+
 declare global {
   interface Window {
     electronAPI: {
+      // API calls proxied through the main process to bypass CORS.
+      auth: {
+        login: (credentials: {
+          email: string;
+          password: string;
+        }) => Promise<IpcResult<any>>;
+        me: (accessToken?: string) => Promise<IpcResult<any>>;
+        refresh: (refreshToken?: string) => Promise<IpcResult<any>>;
+        logout: (accessToken?: string) => Promise<IpcResult<{ success: boolean }>>;
+        storeDesktopSession: (payload: {
+          accessToken?: string;
+          vintedEmail: string;
+          browserFingerprint: Record<string, any>;
+          sessionData: Array<Record<string, any>>;
+          sessionOrigins: Array<Record<string, any>>;
+          vintedMemberId?: string;
+          updateSessionOnly?: boolean;
+        }) => Promise<IpcResult<any>>;
+        getStoredSession: () => Promise<
+          IpcResult<{ hasSession: boolean; expiresAt: number; expiresIn: number } | null>
+        >;
+      };
       extractVintedSession: (options: {
         firefoxProfile: string;
         vintedBaseUrl: string;

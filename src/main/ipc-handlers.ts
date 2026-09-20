@@ -14,6 +14,8 @@ import { InteractiveSessionExtractor } from "../modules/vinted/session/interacti
 import { SessionUploadService } from "../modules/vinted/session/sessionUpload.service";
 import { ProfileUploader } from "../modules/vinted/profile/profileUploader";
 import { constructProfileS3Path } from "../utils/s3-paths";
+import { registerAuthHandlers } from "./api/auth.handlers";
+import { tokenStore } from "./api/token-store";
 
 // Dynamically import sql.js
 const initSqlJs = require("sql.js");
@@ -23,6 +25,7 @@ async function saveToDatabase(
   vintedEmail: string,
   userEmail: string,
   vintedMemberId: string,
+  accessToken?: string,
 ) {
   try {
     const { saveFirefoxExtractionData } = await import(
@@ -37,6 +40,7 @@ async function saveToDatabase(
       },
       userEmail,
       vintedMemberId,
+      accessToken,
     );
     console.log("Successfully saved to database");
   } catch (error) {
@@ -333,6 +337,10 @@ function getEdgeProfilesWithNames(): ProfileInfo[] {
 function registerIPCHandlers() {
   console.log("[IPC] Registering all IPC handlers...");
 
+  // Authenticated API calls (login/me/refresh/logout/link). These run here in
+  // main so requests carry no Origin header and bypass CORS entirely.
+  registerAuthHandlers();
+
   // Get available Firefox profiles
   ipcMain.handle("firefox:getProfiles", async () => {
     try {
@@ -408,10 +416,10 @@ function registerIPCHandlers() {
     "save:extraction",
     async (event, data, saveMethod, options) => {
       try {
-        const { vintedEmail, userEmail, vintedMemberId } = options;
+        const { vintedEmail, userEmail, vintedMemberId, accessToken } = options;
 
         if (saveMethod === "database" || saveMethod === "both") {
-          await saveToDatabase(data, vintedEmail, userEmail, vintedMemberId);
+          await saveToDatabase(data, vintedEmail, userEmail, vintedMemberId, accessToken);
         }
 
         if (saveMethod === "file" || saveMethod === "both") {
@@ -1329,7 +1337,7 @@ function registerIPCHandlers() {
 
       const startUpload = Date.now();
       sendProgress("API_CALLING", `Making API request...`);
-      const result = await ApiService.uploadBrowserProfile(options.accessToken, {
+      const result = await ApiService.uploadBrowserProfile(tokenStore.resolveAccessToken(options.accessToken), {
         browser: options.browser,
         profileId: options.profileId,
         profileName: options.profileName,
@@ -1463,7 +1471,7 @@ function registerIPCHandlers() {
           console.log(`[IPC] Uploading to API...`);
           const startUpload = Date.now();
           const { ApiService } = await import("../services/api.service");
-          const result = await ApiService.uploadBrowserProfile(options.accessToken, {
+          const result = await ApiService.uploadBrowserProfile(tokenStore.resolveAccessToken(options.accessToken), {
             browser: profile.browser,
             profileId: profile.id,
             profileName: profile.name,

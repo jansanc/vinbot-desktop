@@ -1,11 +1,19 @@
 import { config } from "../config/config";
 
-export class UnauthorizedError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "UnauthorizedError";
-  }
-}
+/**
+ * HTTP client for api.vinbot.app.
+ *
+ * This module runs in the MAIN process only. Requests issued from Node send no
+ * Origin header, so they are exempt from the API's CORS policy — which is the
+ * point: the renderer is a file:// page in packaged builds, and a file:// page
+ * sends `Origin: null`, which the API rejects. Renderer code reaches these
+ * methods over IPC via `src/services/api.bridge.ts`.
+ *
+ * Nothing here may touch `window`, `document` or `localStorage`.
+ */
+
+export { UnauthorizedError } from "./errors";
+import { UnauthorizedError } from "./errors";
 
 export interface LoginResponse {
   status: "success" | "fail" | "error";
@@ -59,30 +67,22 @@ export class ApiService {
   private static handleAuthError(response: { status: number; statusText: string }): void {
     if (response.status === 401) {
       const timestamp = new Date().toISOString();
-      const message = `[${timestamp}] error: [${response.status}] ${response.statusText} User not authenticated`;
-      console.error(message);
-
-      // Clear stored session and user data
-      localStorage.removeItem(config.storage.keys.session);
-      localStorage.removeItem(config.storage.keys.user);
-      config.storage.memoryStore.clear();
-
-      // Dispatch event to trigger re-authentication
-      window.dispatchEvent(
-        new CustomEvent("auth:unauthorized", {
-          detail: { status: response.status, statusText: response.statusText },
-        })
+      console.error(
+        `[${timestamp}] error: [${response.status}] ${response.statusText} User not authenticated`
       );
 
+      // Clearing storage and prompting re-authentication is the renderer's job;
+      // the bridge turns this error back into the `auth:unauthorized` event.
       throw new UnauthorizedError("User not authenticated. Please log in again.");
     }
   }
 
   static async login(credentials: LoginCredentials): Promise<LoginResponse> {
+    const endpoint = `${config.api.baseUrl}${config.api.endpoints.auth.login}`;
     try {
-      const response = await fetch(
-        `${config.api.baseUrl}${config.api.endpoints.auth.login}`,
-        {
+      console.log(`[ApiService] Attempting login at: ${endpoint}`);
+
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -117,7 +117,12 @@ export class ApiService {
 
       return data;
     } catch (error) {
-      throw error instanceof Error ? error : new Error("Network error");
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`[ApiService] Login failed at ${endpoint}:`, {
+        error: errorMessage,
+        type: error instanceof TypeError ? "Network/DNS Error" : "Application Error",
+      });
+      throw error instanceof Error ? error : new Error(`Network error: ${errorMessage}`);
     }
   }
 
@@ -257,18 +262,6 @@ export class ApiService {
           const timestamp = new Date().toISOString();
           console.error(
             `[${timestamp}] error: [401] ${data.message} User not authenticated`
-          );
-
-          // Clear stored session and user data
-          localStorage.removeItem(config.storage.keys.session);
-          localStorage.removeItem(config.storage.keys.user);
-          config.storage.memoryStore.clear();
-
-          // Dispatch event to trigger re-authentication
-          window.dispatchEvent(
-            new CustomEvent("auth:unauthorized", {
-              detail: { status: 401, statusText: "Unauthorized", message: data.message },
-            })
           );
 
           throw new UnauthorizedError(data.message || "User not authenticated. Please log in again.");

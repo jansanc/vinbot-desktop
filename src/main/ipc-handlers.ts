@@ -2,7 +2,6 @@ import { ipcMain, dialog, app } from "electron";
 import path from "path";
 import os from "os";
 import * as fs from "fs";
-import * as http from "http";
 import { readFileSync, existsSync, readdirSync, writeFileSync, mkdirSync, unlinkSync, statSync } from "fs";
 import { spawn } from "child_process";
 import { extractFirefoxProfileData } from "./extractors/firefox.extractor";
@@ -13,7 +12,6 @@ import { SessionExtractor, type ExtractedSession } from "../modules/vinted/sessi
 import { InteractiveSessionExtractor } from "../modules/vinted/session/interactiveSessionExtractor";
 import { SessionUploadService } from "../modules/vinted/session/sessionUpload.service";
 import { ProfileUploader } from "../modules/vinted/profile/profileUploader";
-import { constructProfileS3Path } from "../utils/s3-paths";
 import { registerAuthHandlers } from "./api/auth.handlers";
 import { tokenStore } from "./api/token-store";
 
@@ -770,123 +768,46 @@ function registerIPCHandlers() {
           console.log(`[IPC] Profile archive path: ${result.profile_archive_path}`);
 
           const archiveBuffer = fs.readFileSync(result.profile_archive_path);
-          const { config } = await import("../config/config");
 
-          // Construct persistent S3 path (account-based, not timestamp-based)
-          // This allows the backend to refresh and update the profile over time
-          const s3Path = constructProfileS3Path(
-            userEmail, // Use email as stable user ID
-            vintedMemberId || profileName,
-            browser
+          // One uploader for the whole app: ApiService.uploadBrowserProfile.
+          // This used to issue its own http.request against config.api.baseUrl,
+          // which is https in production - http.request would have gone to
+          // port 80. It also computed its own "profiles/..." storage key, which
+          // the API ignored. The API derives the key from userId + vintedEmail.
+          const { ApiService } = await import("../services/api.service");
+
+          sendProgress(
+            "PROFILE_UPLOAD_START",
+            `Uploading profile (${archiveBuffer.length} bytes)...`
           );
 
-          sendProgress("S3_PATH", `📦 Persistent S3 path: ${s3Path.fullPath}`);
-          console.log(`[IPC] Using persistent S3 path:`, {
-            fullPath: s3Path.fullPath,
-            bucket: s3Path.bucket,
-            key: s3Path.key,
-          });
-
-          const headers = {
-            "Content-Type": "application/octet-stream",
-            "Authorization": `Bearer ${accessToken}`,
-            "x-browser": browser,
-            "x-profile-id": profileName,
-            "x-profile-name": profileName,
-            "x-vinted-account-id": vintedMemberId || profileName,
-            "x-user-id": userEmail || "system",
-            "x-user-email": userEmail || "",
-            "x-vinted-email": vintedEmail,
-            "x-vinted-member-id": vintedMemberId || "",
-            "x-s3-key": s3Path.key, // Persistent S3 path (not timestamp-based)
-            "x-compressed-size": String(result.profile_archive_size),
-            "x-original-size": String(result.profile_archive_size),
-            "x-metadata": JSON.stringify({
+          const uploaded = await ApiService.uploadBrowserProfile(accessToken, {
+            browser,
+            profileId: profileName,
+            profileName,
+            vintedAccountId: vintedMemberId || profileName,
+            profileData: archiveBuffer,
+            compressedSize: result.profile_archive_size,
+            originalSize: result.profile_archive_size,
+            metadata: JSON.stringify({
               compressedAt: new Date(result.compressed_at).toISOString(),
               loginUrl: url,
               extractedAt: new Date(result.extracted_at).toISOString(),
               type: "interactive-login",
-              s3Path: s3Path.fullPath,
             }),
+            vintedEmail,
+            vintedMemberId: vintedMemberId || undefined,
+          });
+
+          sendProgress(
+            "PROFILE_UPLOAD_DONE",
+            `Profile uploaded (ID: ${uploaded.id}) -> ${uploaded.storagePath}`
+          );
+          profileUploadResult = {
+            success: true,
+            profileId: uploaded.id,
+            storageLocation: uploaded.storagePath,
           };
-
-          console.log(`[IPC] Sending profile upload headers:`, {
-            browser: headers["x-browser"],
-            profileId: headers["x-profile-id"],
-            profileName: headers["x-profile-name"],
-            vintedAccountId: headers["x-vinted-account-id"],
-            userId: headers["x-user-id"],
-            vintedEmail: headers["x-vinted-email"],
-            s3Key: headers["x-s3-key"],
-            metadataLength: headers["x-metadata"].length,
-          });
-
-          const profileUploadResponse = await new Promise<{
-            ok: boolean;
-            status: number;
-            text: () => Promise<string>;
-            json: () => Promise<any>;
-          }>((resolve, reject) => {
-            const urlObj = new URL(`${config.api.baseUrl}${config.api.endpoints.vinted.profileUpload}`);
-            const bodyBuffer = archiveBuffer;
-            const req = http.request(
-              {
-                hostname: urlObj.hostname,
-                port: urlObj.port,
-                path: `${urlObj.pathname}${urlObj.search}`,
-                method: "POST",
-                headers: {
-                  ...headers,
-                  "Content-Length": String(bodyBuffer.length),
-                },
-              },
-              (res) => {
-                const chunks: Buffer[] = [];
-                res.on("data", (chunk) => chunks.push(chunk));
-                res.on("end", () => {
-                  const text = Buffer.concat(chunks).toString("utf-8");
-                  resolve({
-                    ok: res.statusCode !== undefined && res.statusCode < 400,
-                    status: res.statusCode || 0,
-                    text: () => Promise.resolve(text),
-                    json: () => Promise.resolve(JSON.parse(text)),
-                  });
-                });
-              }
-            );
-            req.on("error", (err) => reject(err));
-            req.write(bodyBuffer);
-            req.end();
-          });
-
-          if (!profileUploadResponse.ok) {
-            const errorText = await profileUploadResponse.text();
-            console.error(`[IPC] Profile upload HTTP error: ${profileUploadResponse.status}`, errorText.substring(0, 500));
-            throw new Error(`Profile upload failed: ${profileUploadResponse.status} ${errorText.substring(0, 200)}`);
-          }
-
-          const uploadData = await profileUploadResponse.json();
-          console.log(`[IPC] Profile upload response:`, JSON.stringify(uploadData, null, 2).substring(0, 1000));
-
-          // Check if API returned success
-          if (uploadData?.status === 'fail' || uploadData?.status === 'error') {
-            throw new Error(`API Error: ${uploadData?.message || 'Unknown error'}`);
-          }
-
-          const profileId = uploadData?.data?.data?.id || uploadData?.data?.id || uploadData?.id;
-          const storagePath = uploadData?.data?.data?.storagePath || uploadData?.data?.storagePath || uploadData?.storagePath;
-
-          if (profileId) {
-            sendProgress("PROFILE_UPLOAD_DONE", `✅ Profile uploaded to S3 (ID: ${profileId})`);
-            profileUploadResult = {
-              success: true,
-              profileId,
-              storageLocation: storagePath,
-            };
-          } else {
-            console.error(`[IPC] No profileId in response:`, uploadData);
-            throw new Error("Invalid response from profile upload - no ID returned");
-          }
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : String(error);
           console.error(`[IPC] Profile upload error caught:`, error);

@@ -6,13 +6,6 @@ export interface SupabaseConfig {
   anonKey: string;
 }
 
-export interface S3Config {
-  bucket: string;
-  region: string;
-  accessKeyId: string;
-  secretAccessKey: string;
-}
-
 export interface SessionUploadOptions {
   userEmail: string;
   vintedEmail: string;
@@ -368,48 +361,6 @@ export class SessionUploadService {
       return {
         success: false,
         message: `Supabase upload failed: ${message}`,
-      };
-    }
-  }
-
-  /**
-   * Upload session to S3 directly
-   * @deprecated Use linkVintedAccount instead for consolidated flow
-   * Note: Requires AWS SDK or presigned URL approach
-   */
-  static async uploadToS3(
-    session: ExtractedSession,
-    s3Config: S3Config,
-    options: SessionUploadOptions
-  ): Promise<{ success: boolean; message: string }> {
-    try {
-      // For now, return a placeholder indicating S3 upload setup
-      // In production, you'd use AWS SDK or a presigned URL from your backend
-      const key = `vinted-sessions/${options.userEmail}/${options.vintedEmail}/${Date.now()}.json`;
-
-      const sessionData = {
-        vinted_email: options.vintedEmail,
-        vinted_member_id: options.vintedMemberId,
-        user_email: options.userEmail,
-        cookies: session.cookies,
-        profile_name: session.profile_name,
-        extracted_at: new Date(session.extracted_at).toISOString(),
-      };
-
-      // This would normally use AWS SDK
-      console.log(`[SessionUploadService] S3 upload would save to: s3://${s3Config.bucket}/${key}`);
-
-      // For now, we recommend using the API endpoint instead
-      return {
-        success: false,
-        message: "S3 direct upload not yet implemented. Use API endpoint instead.",
-      };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error("[SessionUploadService] S3 upload failed:", message);
-      return {
-        success: false,
-        message: `S3 upload failed: ${message}`,
       };
     }
   }

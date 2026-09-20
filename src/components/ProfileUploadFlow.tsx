@@ -338,9 +338,9 @@ const ProfileUploadFlow: React.FC<ProfileUploadFlowProps> = ({
   return (
     <div className="w-full max-w-4xl mx-auto p-6" style={{ backgroundColor: `hsl(var(--background))`, minHeight: '100vh' }}>
       <div className="mb-6">
-        <h2 className="text-2xl font-bold mb-2" style={{ color: `hsl(var(--foreground))` }}>Upload Profiles to AWS S3</h2>
+        <h2 className="text-2xl font-bold mb-2" style={{ color: `hsl(var(--foreground))` }}>Upload Profiles</h2>
         <p style={{ color: `hsl(var(--muted-foreground))` }}>
-          Select browser profiles to upload to AWS S3 via secure backend transfer
+          Select browser profiles to upload securely through the backend
         </p>
       </div>
 

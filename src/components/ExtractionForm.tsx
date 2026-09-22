@@ -35,7 +35,7 @@ const browserConfig: Record<BrowserType, { name: string; dot: string }> = {
   edge: { name: "Edge", dot: "bg-[oklch(0.62_0.15_220)]" },
 };
 
-const browserOrder: BrowserType[] = ["chrome", "firefox", "edge"];
+const browserOrder: BrowserType[] = ["firefox", "chrome", "edge"];
 
 export default function ExtractionForm({
   onSubmit,
@@ -46,7 +46,7 @@ export default function ExtractionForm({
 }: ExtractionFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [selectedBrowser, setSelectedBrowser] = useState<BrowserType>("chrome");
+  const [selectedBrowser, setSelectedBrowser] = useState<BrowserType>("firefox");
   const [selectedProfile, setSelectedProfile] = useState("");
   const [vintedEmail, setVintedEmail] = useState("");
   const [isOpeningBrowser, setIsOpeningBrowser] = useState(false);

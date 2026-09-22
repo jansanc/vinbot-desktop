@@ -26,7 +26,7 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
   const { addError } = useError();
   const [url, setUrl] = useState("https://www.vinted.es/member/signup/select_type?ref_url=%2F");
   const [profileName, setProfileName] = useState("");
-  const [browser, setBrowser] = useState<"chrome" | "firefox" | "edge">("chrome");
+  const [browser, setBrowser] = useState<"chrome" | "firefox" | "edge">("firefox");
   const [timeout, setTimeout] = useState(5);
   const [userEmail, setUserEmail] = useState(initialUserId);
   const [vintedEmail, setVintedEmail] = useState("");
@@ -313,8 +313,8 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
                         disabled={isLoading}
                         className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
                       >
-                        <option value="chrome">Chrome (Recommended)</option>
-                        <option value="firefox">Firefox</option>
+                        <option value="firefox">Firefox (Recommended)</option>
+                        <option value="chrome">Chrome</option>
                         <option value="edge">Edge</option>
                       </select>
                     </div>

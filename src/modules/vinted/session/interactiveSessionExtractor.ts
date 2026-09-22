@@ -85,7 +85,12 @@ export class InteractiveSessionExtractor {
         url
       );
     } else if (browser === "firefox") {
-      args.push("-profile", profilePath, url);
+      // -no-remote and -new-instance are what make this a login we can wait on.
+      // Firefox's default behaviour, when any Firefox is already running, is to
+      // hand the URL to that instance and exit immediately: the spawned process
+      // dies in milliseconds, the wait-for-exit below returns at once, and what
+      // gets archived is the empty temp profile the user never typed into.
+      args.push("-no-remote", "-new-instance", "-profile", profilePath, url);
     }
 
     console.log(`[InteractiveLogin] Launching ${browser} with args:`, args);

@@ -410,16 +410,16 @@ const ProfileUploadFlow: React.FC<ProfileUploadFlowProps> = ({
         <>
           <div className="mb-6 space-y-4">
             <BrowserSection
-              browser="chrome"
-              profiles={chromeProfiles}
-              title="Google Chrome"
-              icon="🌐"
-            />
-            <BrowserSection
               browser="firefox"
               profiles={firefoxProfiles}
               title="Mozilla Firefox"
               icon="🦊"
+            />
+            <BrowserSection
+              browser="chrome"
+              profiles={chromeProfiles}
+              title="Google Chrome"
+              icon="🌐"
             />
             <BrowserSection
               browser="edge"

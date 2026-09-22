@@ -3,6 +3,7 @@ import { existsSync, writeFileSync, statSync } from "fs";
 import * as tar from "tar";
 import { ChromeCookieExtractor } from "../../../services/chrome-cookie-extractor";
 import { StorageStateService } from "../../../services/storage-state.service";
+import { includeInProfileArchive } from "./profileArchive";
 
 
 export class ProfileUploader {
@@ -43,14 +44,15 @@ export class ProfileUploader {
         throw new Error(`Profile path not found: ${profilePath}`);
       }
 
-      onProgress?.(`🚀 Compressing entire profile folder to tar.gz...`);
+      onProgress?.(`🚀 Compressing profile folder to tar.gz (caches excluded)...`);
 
-      // Compress the entire profile directory to tar.gz
+      // Everything the session needs, none of the caches - see profileArchive.
       await tar.create(
         {
           gzip: true,
           file: outputPath,
           cwd: path.dirname(profilePath),
+          filter: includeInProfileArchive,
         },
         [path.basename(profilePath)]
       );

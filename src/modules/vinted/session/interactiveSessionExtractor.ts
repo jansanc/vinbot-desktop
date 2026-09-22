@@ -3,6 +3,7 @@ import os from "os";
 import { spawn, ChildProcess } from "child_process";
 import { existsSync, mkdirSync, writeFileSync, rmSync, statSync } from "fs";
 import * as tar from "tar";
+import { includeInProfileArchive } from "../profile/profileArchive";
 
 export interface InteractiveLoginOptions {
   url: string;
@@ -172,12 +173,13 @@ export class InteractiveSessionExtractor {
       const archivePath = path.join(os.tmpdir(), `vinted_login_${profileName}_${Date.now()}.tar.gz`);
 
       try {
-        // Compress the entire profile directory (same as ProfileUploader)
+        // Same contents as ProfileUploader: session state, no caches.
         await tar.create(
           {
             gzip: true,
             file: archivePath,
             cwd: path.dirname(this.tempProfileDir),
+            filter: includeInProfileArchive,
           },
           [path.basename(this.tempProfileDir)]
         );

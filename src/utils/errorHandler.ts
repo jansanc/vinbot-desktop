@@ -104,6 +104,26 @@ export class ErrorHandler {
     return "UNKNOWN_ERROR";
   }
 
+  /**
+   * The API answers a rejected request with a message written for the user
+   * ("This browser profile is too large to upload. Clear the browser cache..."),
+   * and ApiService carries it in the thrown error as "... (413): <message>".
+   * Replacing that with a generic "Failed to upload. Please try again" throws
+   * away the only part that says what to do, so it is kept when present.
+   */
+  private static extractServerMessage(error: unknown): string | null {
+    if (!(error instanceof Error)) return null;
+    const match = error.message.match(/\((?:[45]\d{2})\):\s*(.+)$/s);
+    const serverMessage = match?.[1]?.trim();
+    if (!serverMessage) return null;
+    // A bare status text ("Internal Server Error") says no more than the
+    // generic message does.
+    if (/^(internal server error|bad gateway|service unavailable)$/i.test(serverMessage)) {
+      return null;
+    }
+    return serverMessage;
+  }
+
   static handle(error: unknown): AppError {
     const code = this.classify(error);
     const { userMessage, severity } = this.ERROR_MESSAGES[code];
@@ -112,7 +132,7 @@ export class ErrorHandler {
     return {
       code,
       message: error instanceof Error ? error.message : String(error),
-      userMessage,
+      userMessage: this.extractServerMessage(error) || userMessage,
       severity,
       details,
       timestamp: new Date().toISOString(),

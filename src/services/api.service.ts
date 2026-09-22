@@ -349,7 +349,17 @@ export class ApiService {
           // Response might not be JSON
         }
         const errorMsg = errorData?.data?.message || errorData?.message || response.statusText;
-        console.error("[ApiService] Profile upload failed with status", response.status, ":", errorMsg);
+        // Outside production the API also sends what actually broke; it is the
+        // only thing that names the cause, so it goes to the log next to the
+        // user-facing message rather than being dropped.
+        const technicalMsg = errorData?.details?.technicalMessage;
+        console.error(
+          "[ApiService] Profile upload failed with status",
+          response.status,
+          ":",
+          errorMsg,
+          technicalMsg ? `(${technicalMsg})` : ""
+        );
         throw new Error(
           `Upload failed (${response.status}): ${errorMsg}`
         );

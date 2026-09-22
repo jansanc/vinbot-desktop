@@ -3,6 +3,8 @@ declare module "tar" {
     gzip?: boolean;
     file?: string;
     cwd?: string;
+    /** Return false to leave the entry (and, for a directory, its contents) out. */
+    filter?: (path: string, stat: unknown) => boolean;
   }
 
   export function create(

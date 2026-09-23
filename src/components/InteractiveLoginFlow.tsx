@@ -22,12 +22,27 @@ interface FirefoxProfileSession {
   isDefault: boolean;
   session: {
     state: "logged-in" | "anonymous" | "none";
-    userId?: string;
-    domains: string[];
+    /** One per Vinted site logged in to; each is a separate account. */
+    sites: Array<{ site: string; userId?: string; expiresAt?: number }>;
     cookieCount: number;
-    expiresAt?: number;
   };
   error?: string;
+}
+
+/** One importable session: a Firefox profile and one Vinted site it's logged in to. */
+interface ImportChoice {
+  key: string;
+  profile: FirefoxProfileSession;
+  site?: { site: string; userId?: string; expiresAt?: number };
+}
+
+/** A row per logged-in site, or one disabled row for a profile with none. */
+function importChoices(profiles: FirefoxProfileSession[]): ImportChoice[] {
+  return profiles.flatMap((profile) =>
+    profile.session.sites.length
+      ? profile.session.sites.map((site) => ({ key: `${profile.path}|${site.site}`, profile, site }))
+      : [{ key: profile.path, profile }]
+  );
 }
 
 /** "login": open a fresh Firefox to log in. "import": reuse the user's own Firefox session. */
@@ -59,7 +74,7 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
   const [mode, setMode] = useState<Mode>("login");
   const modeChosen = useRef(false);
   const [firefoxProfiles, setFirefoxProfiles] = useState<FirefoxProfileSession[]>([]);
-  const [selectedProfilePath, setSelectedProfilePath] = useState("");
+  const [selectedChoiceKey, setSelectedChoiceKey] = useState("");
   const [isScanning, setIsScanning] = useState(false);
 
   const scanFirefoxProfiles = useCallback(async () => {
@@ -70,9 +85,9 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
       const response = await electronAPI.findFirefoxSessions();
       const profiles: FirefoxProfileSession[] = response?.profiles ?? [];
       setFirefoxProfiles(profiles);
-      const loggedIn = profiles.filter((p) => p.session.state === "logged-in");
-      setSelectedProfilePath((current) =>
-        loggedIn.some((p) => p.path === current) ? current : loggedIn[0]?.path ?? ""
+      const loggedIn = importChoices(profiles).filter((c) => c.site);
+      setSelectedChoiceKey((current) =>
+        loggedIn.some((c) => c.key === current) ? current : loggedIn[0]?.key ?? ""
       );
       // Offer the import first when there's a session to import, unless the
       // user already picked a mode themselves.
@@ -94,7 +109,8 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
     setError(null);
   };
 
-  const selectedProfile = firefoxProfiles.find((p) => p.path === selectedProfilePath);
+  const choices = importChoices(firefoxProfiles);
+  const selectedChoice = choices.find((c) => c.key === selectedChoiceKey && c.site);
 
   useEffect(() => {
     const electronAPI = (window as any).electronAPI;
@@ -207,14 +223,15 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
       // Auto-generate profile name if not provided
       const finalProfileName = profileName.trim() || `vinted_${Date.now()}`;
 
-      if (mode === "import" && !selectedProfile) {
+      if (mode === "import" && !selectedChoice) {
         throw new Error("Choose the Firefox profile you're logged in to Vinted with");
       }
 
       const response =
         mode === "import"
           ? await electronAPI.importFirefoxSession({
-              profilePath: selectedProfile!.path,
+              profilePath: selectedChoice!.profile.path,
+              site: selectedChoice!.site!.site,
               profileName: finalProfileName,
               userEmail: userEmail.trim(),
               vintedEmail: vintedEmail.trim(),
@@ -370,17 +387,17 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
                     </p>
                   ) : (
                     <div role="radiogroup" aria-label="Firefox profile" className="space-y-2">
-                      {firefoxProfiles.map((profile) => {
-                        const usable = profile.session.state === "logged-in";
-                        const selected = profile.path === selectedProfilePath;
+                      {choices.map(({ key, profile, site }) => {
+                        const usable = !!site;
+                        const selected = key === selectedChoiceKey;
                         return (
                           <button
-                            key={profile.path}
+                            key={key}
                             type="button"
                             role="radio"
                             aria-checked={selected}
                             disabled={!usable || isLoading}
-                            onClick={() => setSelectedProfilePath(profile.path)}
+                            onClick={() => setSelectedChoiceKey(key)}
                             className={`flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors disabled:cursor-not-allowed ${
                               selected
                                 ? "border-blue-500 bg-blue-50 dark:border-blue-500 dark:bg-blue-950/30"
@@ -411,8 +428,7 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
                                 {profile.error
                                   ? "Couldn't read this profile"
                                   : usable
-                                    ? `Logged in on ${profile.session.domains.join(", ")}` +
-                                      (profile.session.userId ? ` · member ${profile.session.userId}` : "")
+                                    ? `Logged in on ${site!.site}` + (site!.userId ? ` · member ${site!.userId}` : "")
                                     : profile.session.state === "anonymous"
                                       ? "Not logged in to Vinted"
                                       : "No Vinted session"}
@@ -530,7 +546,7 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
             <div className="px-6 py-4 border-t border-gray-200 dark:border-slate-700">
               <Button
                 onClick={handleStartLogin}
-                disabled={isLoading || !vintedEmail.trim() || (mode === "import" && !selectedProfile)}
+                disabled={isLoading || !vintedEmail.trim() || (mode === "import" && !selectedChoice)}
                 size="lg"
                 className="w-full"
               >

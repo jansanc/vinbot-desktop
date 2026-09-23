@@ -20,9 +20,10 @@ import type { InteractiveLoginResult, VintedCookie } from "./interactiveSessionE
  *
  * What gets uploaded is NOT the user's Firefox profile. That holds their
  * history, saved passwords and every other site's cookies, none of which is
- * ours to take. Instead a fresh, minimal profile is built holding only:
- *   - cookies.sqlite, with every non-Vinted cookie deleted
- *   - storage/default/<vinted origin>/ (local storage, IndexedDB)
+ * ours to take. Instead a fresh, minimal profile is built holding only one
+ * Vinted site's session (see importFirefoxSession for why just one):
+ *   - cookies.sqlite, with every other cookie deleted
+ *   - storage/default/<that site's origins>/ (local storage, IndexedDB)
  * Firefox rebuilds everything else in a profile on first start.
  *
  * Firefox may still be running while this reads. Its SQLite databases are in
@@ -41,15 +42,24 @@ export interface FirefoxProfileCandidate {
   isDefault: boolean;
 }
 
-export interface VintedSessionInfo {
-  state: "logged-in" | "anonymous" | "none";
-  /** The Vinted user id (the token's subject), when logged in. */
+/**
+ * A logged-in session on one Vinted site. Each site (vinted.es, vinted.com,
+ * vinted.co.uk ...) is a separate account with its own tokens.
+ */
+export interface VintedSiteSession {
+  /** The site without "www.", e.g. "vinted.es". */
+  site: string;
+  /** The Vinted user id (the token's subject). */
   userId?: string;
-  /** Hosts with a logged-in token, e.g. [".vinted.es"]. */
-  domains: string[];
-  cookieCount: number;
   /** When the logged-in refresh token expires (unix seconds). */
   expiresAt?: number;
+}
+
+export interface VintedSessionInfo {
+  state: "logged-in" | "anonymous" | "none";
+  /** Every site this profile is logged in to, most recently logged in first. */
+  sites: VintedSiteSession[];
+  cookieCount: number;
 }
 
 export interface FirefoxProfileSession extends FirefoxProfileCandidate {
@@ -60,7 +70,7 @@ export interface FirefoxProfileSession extends FirefoxProfileCandidate {
 
 interface SqlJsDatabase {
   exec(sql: string): Array<{ columns: string[]; values: unknown[][] }>;
-  run(sql: string): void;
+  run(sql: string, params?: unknown[]): void;
   export(): Uint8Array;
   close(): void;
 }
@@ -299,6 +309,11 @@ const VINTED_HOST = /(^|\.)vinted\.[a-z]{2,3}(\.[a-z]{2})?$/i;
 const VINTED_COOKIES_WHERE =
   "(host LIKE '%vinted.%') AND (originAttributes IS NULL OR originAttributes = '')";
 
+/** The Vinted site a cookie host belongs to: ".www.vinted.es" -> "vinted.es". */
+export function vintedSiteOf(host: string): string {
+  return host.toLowerCase().replace(/^\./, "").replace(/^www\./, "");
+}
+
 function toVintedCookie(row: unknown[]): VintedCookie | null {
   const [name, value, host, cookiePath, expiry, isSecure, isHttpOnly, sameSite] = row;
   if (!VINTED_HOST.test(String(host).replace(/^\./, ""))) return null;
@@ -339,19 +354,24 @@ function selectVintedCookies(db: SqlJsDatabase): VintedCookie[] {
 }
 
 /**
- * Whether the cookies hold a logged-in Vinted session that hasn't expired.
+ * Which Vinted sites the cookies hold a logged-in, unexpired session for.
  *
  * Vinted hands every visitor access_token_web/refresh_token_web cookies, so
  * their presence proves nothing. They are JWTs, though: an anonymous one has
  * scope "public" and no subject; a logged-in one names the user.
+ *
+ * Only the refresh token counts: it is what the backend renews the session
+ * with, and an access token alone expires within hours.
  */
 export function describeVintedSession(cookies: VintedCookie[]): VintedSessionInfo {
-  const info: VintedSessionInfo = { state: "none", domains: [], cookieCount: cookies.length };
+  const info: VintedSessionInfo = { state: "none", sites: [], cookieCount: cookies.length };
+  const issuedAt = new Map<string, number>();
   const now = Date.now() / 1000;
 
   for (const cookie of cookies) {
     if (cookie.name !== "refresh_token_web" && cookie.name !== "access_token_web") continue;
     if (info.state === "none") info.state = "anonymous";
+    if (cookie.name !== "refresh_token_web") continue;
     try {
       const claims = JSON.parse(
         Buffer.from(cookie.value.split(".")[1] ?? "", "base64url").toString("utf8")
@@ -359,17 +379,22 @@ export function describeVintedSession(cookies: VintedCookie[]): VintedSessionInf
       if (claims.exp && claims.exp < now) continue;
       if (!(claims.sub || (claims.scope && claims.scope !== "public"))) continue;
 
-      info.state = "logged-in";
-      info.userId ??= claims.sub ? String(claims.sub) : undefined;
-      const domain = cookie.domain.replace(/^\./, "");
-      if (!info.domains.includes(domain)) info.domains.push(domain);
-      if (cookie.name === "refresh_token_web" && claims.exp) {
-        info.expiresAt = Math.max(info.expiresAt ?? 0, claims.exp);
-      }
+      const site = vintedSiteOf(cookie.domain);
+      if (issuedAt.has(site) && issuedAt.get(site)! >= (claims.iat ?? 0)) continue;
+      issuedAt.set(site, claims.iat ?? 0);
+      info.sites = info.sites.filter((s) => s.site !== site);
+      info.sites.push({
+        site,
+        userId: claims.sub ? String(claims.sub) : undefined,
+        expiresAt: claims.exp,
+      });
     } catch {
       // Not a JWT we can read; judge by the others.
     }
   }
+
+  if (info.sites.length) info.state = "logged-in";
+  info.sites.sort((a, b) => (issuedAt.get(b.site) ?? 0) - (issuedAt.get(a.site) ?? 0));
   return info;
 }
 
@@ -393,7 +418,7 @@ export async function findFirefoxVintedSessions(): Promise<FirefoxProfileSession
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.warn(`[FirefoxImport] Could not read ${profile.path}: ${msg}`);
-      results.push({ ...profile, session: { state: "none", domains: [], cookieCount: 0 }, error: msg });
+      results.push({ ...profile, session: { state: "none", sites: [], cookieCount: 0 }, error: msg });
     }
   }
 
@@ -452,12 +477,25 @@ function copyOriginStorage(from: string, to: string): void {
 export interface FirefoxImportOptions {
   profilePath: string;
   profileName: string;
+  /**
+   * The Vinted site whose session to import, e.g. "vinted.es". Optional when
+   * the profile is logged in to exactly one site.
+   */
+  site?: string;
 }
 
 /**
- * Build a Vinted-only profile from the user's Firefox profile and archive it.
- * The result has the same shape as an interactive login's, so it goes through
- * the same upload and account-linking steps.
+ * Build a single-site Vinted profile from the user's Firefox profile and
+ * archive it. The result has the same shape as an interactive login's, so it
+ * goes through the same upload and account-linking steps.
+ *
+ * Only the chosen site's cookies and storage go in. An everyday profile
+ * usually holds several Vinted sites - other accounts, or anonymous visits -
+ * and the engine takes the account's site from whichever Vinted auth cookie
+ * it meets first. With the others included it opened a site the account
+ * isn't logged in to, and Vinted answered 403 access_denied. A login through
+ * "Log in with Firefox" never has this problem: its fresh profile only ever
+ * visited one site.
  *
  * Throws when the profile holds no logged-in Vinted session: unlike the
  * interactive login there is nothing to lose by refusing, and uploading a
@@ -465,6 +503,7 @@ export interface FirefoxImportOptions {
  */
 export async function importFirefoxSession(options: FirefoxImportOptions): Promise<InteractiveLoginResult> {
   const { profilePath, profileName } = options;
+  let site = options.site ? vintedSiteOf(options.site) : undefined;
   const startedAt = Date.now();
 
   if (!existsSync(path.join(profilePath, "cookies.sqlite"))) {
@@ -481,8 +520,8 @@ export async function importFirefoxSession(options: FirefoxImportOptions): Promi
   try {
     let cookies: VintedCookie[];
     try {
-      cookies = selectVintedCookies(db);
-      const session = describeVintedSession(cookies);
+      const allCookies = selectVintedCookies(db);
+      const session = describeVintedSession(allCookies);
       if (session.state !== "logged-in") {
         throw new Error(
           session.state === "anonymous"
@@ -492,12 +531,30 @@ export async function importFirefoxSession(options: FirefoxImportOptions): Promi
                 "Open Vinted in Firefox and log in, or use \"Log in with Firefox\" instead."
         );
       }
-      console.log(
-        `[FirefoxImport] Logged-in Vinted session (user ${session.userId ?? "?"}) on ${session.domains.join(", ")}`
-      );
+      if (!site) {
+        if (session.sites.length > 1) {
+          throw new Error(
+            `This Firefox profile is logged in to several Vinted sites (${session.sites.map((s) => s.site).join(", ")}). Choose which one to import.`
+          );
+        }
+        site = session.sites[0].site;
+      }
+      const chosen = session.sites.find((s) => s.site === site);
+      if (!chosen) {
+        throw new Error(
+          `This Firefox profile isn't logged in to ${site} (or that session expired). ` +
+            `Open ${site} in Firefox and log in, then refresh the list.`
+        );
+      }
+      console.log(`[FirefoxImport] Importing the ${site} session (user ${chosen.userId ?? "?"})`);
 
-      // cookies.sqlite with only the Vinted cookies left in it.
-      db.run(`DELETE FROM moz_cookies WHERE NOT (${VINTED_COOKIES_WHERE})`);
+      // cookies.sqlite with only that site's cookies left in it.
+      cookies = allCookies.filter((c) => vintedSiteOf(c.domain) === site);
+      const hosts = [...new Set(cookies.map((c) => c.domain))];
+      db.run(
+        `DELETE FROM moz_cookies WHERE NOT (${VINTED_COOKIES_WHERE} AND host IN (${hosts.map(() => "?").join(", ")}))`,
+        hosts
+      );
       db.run("VACUUM");
       writeFileSync(path.join(newProfile, "cookies.sqlite"), Buffer.from(db.export()));
     } finally {
@@ -510,7 +567,7 @@ export async function importFirefoxSession(options: FirefoxImportOptions): Promi
     if (existsSync(storageDir)) {
       for (const origin of readdirSync(storageDir)) {
         const host = origin.match(/^https?\+\+\+([^^+]+?)(\+\d+)?$/)?.[1];
-        if (!host || !VINTED_HOST.test(host)) continue;
+        if (!host || !VINTED_HOST.test(host) || vintedSiteOf(host) !== site) continue;
         copyOriginStorage(path.join(storageDir, origin), path.join(newProfile, "storage", "default", origin));
       }
     }

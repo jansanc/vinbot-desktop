@@ -1165,7 +1165,7 @@ function registerIPCHandlers() {
     try {
       const profiles = await findFirefoxVintedSessions();
       console.log(
-        `[IPC] Firefox profiles: ${profiles.map((p) => `${p.name} (${p.session.state})`).join(", ") || "none"}`
+        `[IPC] Firefox profiles: ${profiles.map((p) => `${p.name} (${p.session.sites.map((s) => s.site).join("+") || p.session.state})`).join(", ") || "none"}`
       );
       return { success: true, profiles };
     } catch (error) {
@@ -1179,6 +1179,8 @@ function registerIPCHandlers() {
   // upload and link it exactly as an interactive login would.
   ipcMain.handle("vinted:importFirefoxSession", async (event, options: {
     profilePath: string;
+    /** The Vinted site to import, e.g. "vinted.es" (see importFirefoxSession). */
+    site?: string;
     profileName: string;
     userEmail?: string;
     vintedEmail?: string;
@@ -1219,16 +1221,17 @@ function registerIPCHandlers() {
       }
 
       sendProgress("IMPORT_START", `🦊 Reading Vinted session from Firefox profile "${profile.name}"...`);
-      const result = await importFirefoxSession({ profilePath: profile.path, profileName });
+      const site = options.site ?? (profile.session.sites.length === 1 ? profile.session.sites[0].site : undefined);
+      const result = await importFirefoxSession({ profilePath: profile.path, profileName, site });
       archivePath = result.profile_archive_path;
 
       // The member id is the logged-in token's subject; used unless the user
       // gave one.
-      const vintedMemberId = options.vintedMemberId?.trim() || profile.session.userId;
+      const siteSession = profile.session.sites.find((s) => s.site === site);
+      const vintedMemberId = options.vintedMemberId?.trim() || siteSession?.userId;
       sendProgress(
         "LOGIN_STATE",
-        `✅ Vinted session is logged in on ${profile.session.domains.join(", ")}` +
-          (vintedMemberId ? ` (member ${vintedMemberId})` : "")
+        `✅ Vinted session is logged in on ${site}` + (vintedMemberId ? ` (member ${vintedMemberId})` : "")
       );
       sendProgress(
         "COMPRESS_COMPLETE",
@@ -1242,7 +1245,7 @@ function registerIPCHandlers() {
         vintedMemberId,
         accessToken,
         uploadToS3,
-        metadata: { type: "firefox-import", firefoxProfile: profile.name },
+        metadata: { type: "firefox-import", firefoxProfile: profile.name, vintedSite: site },
       }, sendProgress);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);

@@ -48,6 +48,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   downloadProfile: (options) => ipcRenderer.invoke("vinted:downloadProfile", options),
   // Interactive login handler
   interactiveLogin: (options) => ipcRenderer.invoke("vinted:interactiveLogin", options),
+  // Import an existing session from the user's own Firefox (same progress/error events)
+  findFirefoxSessions: () => ipcRenderer.invoke("vinted:findFirefoxSessions"),
+  importFirefoxSession: (options) =>
+    ipcRenderer.invoke("vinted:importFirefoxSession", options),
   // Event listeners
   on: (channel, callback) => {
     const listener = (event, data) => callback(data);

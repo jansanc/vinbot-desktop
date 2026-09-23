@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { AlertCircle, CheckCircle, Loader, Lock, Mail, ChevronDown } from "lucide-react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { AlertCircle, CheckCircle, Loader, Lock, Mail, ChevronDown, LogIn, Import, RefreshCw } from "lucide-react";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
@@ -13,6 +13,25 @@ interface LoginProgress {
   message: string;
   timestamp: string;
 }
+
+/** A Firefox profile and its Vinted session, from vinted:findFirefoxSessions. */
+interface FirefoxProfileSession {
+  id: string;
+  name: string;
+  path: string;
+  isDefault: boolean;
+  session: {
+    state: "logged-in" | "anonymous" | "none";
+    userId?: string;
+    domains: string[];
+    cookieCount: number;
+    expiresAt?: number;
+  };
+  error?: string;
+}
+
+/** "login": open a fresh Firefox to log in. "import": reuse the user's own Firefox session. */
+type Mode = "login" | "import";
 
 interface InteractiveLoginFlowProps {
   accessToken?: string;
@@ -37,6 +56,45 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [hasError, setHasError] = useState(false);
+  const [mode, setMode] = useState<Mode>("login");
+  const modeChosen = useRef(false);
+  const [firefoxProfiles, setFirefoxProfiles] = useState<FirefoxProfileSession[]>([]);
+  const [selectedProfilePath, setSelectedProfilePath] = useState("");
+  const [isScanning, setIsScanning] = useState(false);
+
+  const scanFirefoxProfiles = useCallback(async () => {
+    const electronAPI = (window as any).electronAPI;
+    if (!electronAPI?.findFirefoxSessions) return;
+    setIsScanning(true);
+    try {
+      const response = await electronAPI.findFirefoxSessions();
+      const profiles: FirefoxProfileSession[] = response?.profiles ?? [];
+      setFirefoxProfiles(profiles);
+      const loggedIn = profiles.filter((p) => p.session.state === "logged-in");
+      setSelectedProfilePath((current) =>
+        loggedIn.some((p) => p.path === current) ? current : loggedIn[0]?.path ?? ""
+      );
+      // Offer the import first when there's a session to import, unless the
+      // user already picked a mode themselves.
+      if (loggedIn.length && !modeChosen.current) setMode("import");
+    } catch (err) {
+      addError(err, "InteractiveLoginFlow.scanFirefoxProfiles");
+    } finally {
+      setIsScanning(false);
+    }
+  }, [addError]);
+
+  useEffect(() => {
+    scanFirefoxProfiles();
+  }, [scanFirefoxProfiles]);
+
+  const chooseMode = (next: Mode) => {
+    modeChosen.current = true;
+    setMode(next);
+    setError(null);
+  };
+
+  const selectedProfile = firefoxProfiles.find((p) => p.path === selectedProfilePath);
 
   useEffect(() => {
     const electronAPI = (window as any).electronAPI;
@@ -149,16 +207,31 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
       // Auto-generate profile name if not provided
       const finalProfileName = profileName.trim() || `vinted_${Date.now()}`;
 
-      const response = await electronAPI.interactiveLogin({
-        url: url.trim(),
-        profileName: finalProfileName,
-        timeout: timeout * 60, // Convert minutes to seconds
-        userEmail: userEmail.trim(),
-        vintedEmail: vintedEmail.trim(),
-        vintedMemberId: vintedMemberId.trim() || undefined,
-        accessToken: currentToken,
-        uploadToS3: true,
-      });
+      if (mode === "import" && !selectedProfile) {
+        throw new Error("Choose the Firefox profile you're logged in to Vinted with");
+      }
+
+      const response =
+        mode === "import"
+          ? await electronAPI.importFirefoxSession({
+              profilePath: selectedProfile!.path,
+              profileName: finalProfileName,
+              userEmail: userEmail.trim(),
+              vintedEmail: vintedEmail.trim(),
+              vintedMemberId: vintedMemberId.trim() || undefined,
+              accessToken: currentToken,
+              uploadToS3: true,
+            })
+          : await electronAPI.interactiveLogin({
+              url: url.trim(),
+              profileName: finalProfileName,
+              timeout: timeout * 60, // Convert minutes to seconds
+              userEmail: userEmail.trim(),
+              vintedEmail: vintedEmail.trim(),
+              vintedMemberId: vintedMemberId.trim() || undefined,
+              accessToken: currentToken,
+              uploadToS3: true,
+            });
 
       if (response.success) {
         setResult(response.session);
@@ -195,6 +268,7 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
   const getFriendlyMessage = (step: string, originalMessage: string): string => {
     const friendlyMessages: { [key: string]: string } = {
       "START": "Starting login process...",
+      "IMPORT_START": "Reading your Firefox session...",
       "BROWSER_LAUNCH": "Opening browser...",
       "WAITING_FOR_LOGIN": "Waiting for you to log in (close browser when done)...",
       "EXTRACT_COMPLETE": "Session saved successfully!",
@@ -219,7 +293,9 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
             </h1>
           </div>
           <p className="text-base md:text-lg dark:text-gray-400 text-gray-700 ml-11">
-            We'll open Firefox for you to log in. Just close it when done, and your session will be saved automatically.
+            {mode === "import"
+              ? "Already logged in to Vinted in Firefox? We'll reuse that session, so there's no need to log in again."
+              : "We'll open Firefox for you to log in. Just close it when done, and your session will be saved automatically."}
           </p>
         </div>
 
@@ -233,6 +309,35 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
+              {/* Mode: fresh login, or reuse the session in the user's Firefox */}
+              <div
+                role="radiogroup"
+                aria-label="How to get your Vinted session"
+                className="grid grid-cols-2 gap-1 rounded-lg bg-gray-100 p-1 dark:bg-slate-900/50"
+              >
+                {([
+                  { value: "login", label: "Log in with Firefox", Icon: LogIn },
+                  { value: "import", label: "Use my Firefox session", Icon: Import },
+                ] as const).map(({ value, label, Icon }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    role="radio"
+                    aria-checked={mode === value}
+                    onClick={() => chooseMode(value)}
+                    disabled={isLoading}
+                    className={`flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
+                      mode === value
+                        ? "bg-white text-gray-900 shadow-sm dark:bg-slate-700 dark:text-white"
+                        : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
+                    }`}
+                  >
+                    <Icon className="h-4 w-4 shrink-0" />
+                    <span>{label}</span>
+                  </button>
+                ))}
+              </div>
+
               {/* Error Alert */}
               {error && (
                 <Alert variant="destructive">
@@ -240,6 +345,90 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
                   <AlertTitle>Something went wrong</AlertTitle>
                   <AlertDescription>{error}</AlertDescription>
                 </Alert>
+              )}
+
+              {/* Firefox profile picker (import mode) */}
+              {mode === "import" && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>Firefox profile</Label>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={scanFirefoxProfiles}
+                      disabled={isScanning || isLoading}
+                    >
+                      <RefreshCw className={isScanning ? "animate-spin" : ""} />
+                      <span>Refresh</span>
+                    </Button>
+                  </div>
+
+                  {firefoxProfiles.length === 0 ? (
+                    <p className="rounded-lg border border-dashed border-gray-300 p-4 text-sm text-gray-600 dark:border-slate-700 dark:text-gray-400">
+                      {isScanning ? "Looking for Firefox profiles..." : "No Firefox profiles found on this computer."}
+                    </p>
+                  ) : (
+                    <div role="radiogroup" aria-label="Firefox profile" className="space-y-2">
+                      {firefoxProfiles.map((profile) => {
+                        const usable = profile.session.state === "logged-in";
+                        const selected = profile.path === selectedProfilePath;
+                        return (
+                          <button
+                            key={profile.path}
+                            type="button"
+                            role="radio"
+                            aria-checked={selected}
+                            disabled={!usable || isLoading}
+                            onClick={() => setSelectedProfilePath(profile.path)}
+                            className={`flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors disabled:cursor-not-allowed ${
+                              selected
+                                ? "border-blue-500 bg-blue-50 dark:border-blue-500 dark:bg-blue-950/30"
+                                : "border-gray-200 hover:border-gray-300 dark:border-slate-700 dark:hover:border-slate-600"
+                            } ${usable ? "" : "opacity-60"}`}
+                          >
+                            <span
+                              className={`mt-1 h-3.5 w-3.5 shrink-0 rounded-full border-2 ${
+                                selected ? "border-blue-600 bg-blue-600" : "border-gray-400 dark:border-slate-500"
+                              }`}
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="flex flex-wrap items-center gap-2">
+                                <span className="truncate font-medium text-gray-900 dark:text-white">
+                                  {profile.name}
+                                </span>
+                                {profile.isDefault && (
+                                  <span className="rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-gray-700 dark:bg-slate-700 dark:text-gray-300">
+                                    Default
+                                  </span>
+                                )}
+                              </span>
+                              <span
+                                className={`mt-0.5 block text-xs ${
+                                  usable ? "text-green-700 dark:text-green-400" : "text-gray-600 dark:text-gray-500"
+                                }`}
+                              >
+                                {profile.error
+                                  ? "Couldn't read this profile"
+                                  : usable
+                                    ? `Logged in on ${profile.session.domains.join(", ")}` +
+                                      (profile.session.userId ? ` · member ${profile.session.userId}` : "")
+                                    : profile.session.state === "anonymous"
+                                      ? "Not logged in to Vinted"
+                                      : "No Vinted session"}
+                              </span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  <p className="text-xs dark:text-gray-500 text-gray-600">
+                    Only your Vinted cookies are copied — nothing else from your browser. Firefox can stay open.
+                    Not logged in? Open Vinted in Firefox, log in, then press Refresh.
+                  </p>
+                </div>
               )}
 
               {/* Email Input - Main Required Field */}
@@ -301,7 +490,8 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
 
                 {showAdvanced && (
                   <div className="mt-4 space-y-4 p-4 rounded-lg bg-gray-50 dark:bg-slate-900/30">
-                    {/* Timeout Input */}
+                    {/* Timeout Input (only the login window waits) */}
+                    {mode === "login" && (
                     <div className="space-y-2">
                       <Label htmlFor="timeout">Wait Time (minutes)</Label>
                       <Input
@@ -317,6 +507,7 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
                         How long to wait for you to close the browser
                       </p>
                     </div>
+                    )}
 
                     {/* Profile Name */}
                     <div className="space-y-2">
@@ -339,15 +530,17 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
             <div className="px-6 py-4 border-t border-gray-200 dark:border-slate-700">
               <Button
                 onClick={handleStartLogin}
-                disabled={isLoading || !vintedEmail.trim()}
+                disabled={isLoading || !vintedEmail.trim() || (mode === "import" && !selectedProfile)}
                 size="lg"
                 className="w-full"
               >
                 {isLoading ? (
                   <>
                     <Loader className="w-4 h-4 animate-spin" />
-                    <span>Starting...</span>
+                    <span>{mode === "import" ? "Importing..." : "Starting..."}</span>
                   </>
+                ) : mode === "import" ? (
+                  "Import Session"
                 ) : (
                   "Start Login"
                 )}

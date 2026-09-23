@@ -75,6 +75,7 @@ export class SessionUploadService {
         secure: cookie.secure,
         httpOnly: cookie.httpOnly,
         expires: cookie.expires,
+        ...(cookie.sameSite ? { sameSite: cookie.sameSite } : {}),
       } as Record<string, unknown>));
 
       // Convert storage to sessionOrigins format for API

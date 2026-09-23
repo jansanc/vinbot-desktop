@@ -21,6 +21,29 @@ export interface InteractiveLoginResult {
   extracted_at: number;
   loginDuration: number;
   compressed_at: number;
+  /**
+   * What the Vinted cookies said when the window closed. Informational only:
+   * the profile is archived and uploaded whatever this says.
+   */
+  vinted_login: "logged-in" | "anonymous" | "unknown";
+  /**
+   * The Vinted cookies from the closed profile (see readVintedCookies), for
+   * the backend's session row. Empty when they couldn't be read.
+   */
+  vinted_cookies: VintedCookie[];
+}
+
+/** A cookie in Playwright's storageState format, as the backend stores it. */
+export interface VintedCookie {
+  name: string;
+  value: string;
+  domain: string;
+  path: string;
+  /** Unix seconds. */
+  expires: number;
+  secure: boolean;
+  httpOnly: boolean;
+  sameSite: "Strict" | "Lax" | "None";
 }
 
 /** Size of the login window, in logical (DPI-scaled) pixels: a small window,
@@ -191,22 +214,26 @@ export class InteractiveSessionExtractor {
   }
 
   /**
-   * Whether the closed profile holds a logged-in Vinted session.
+   * The Vinted cookies Firefox saved in the closed profile, in Playwright's
+   * cookie format - what the backend's browser engine bootstraps its own
+   * (Chromium) profile from, since it cannot open a Firefox profile.
    *
-   * Vinted hands every visitor access_token_web/refresh_token_web cookies, so
-   * their presence proves nothing. They are JWTs, though: an anonymous one
-   * has scope "public" and no subject; a logged-in one names the user.
+   * Firefox keeps cookies unencrypted in cookies.sqlite, so they can be sent
+   * as-is. Each cookie keeps the host Firefox stored it under: rewriting
+   * .www.vinted.X to .vinted.X leaves a copy that shadows the tokens Vinted
+   * rotates. Partitioned (third-party) cookies are left out.
    *
-   * "unknown" when the cookies can't be read reliably - no cookies.sqlite, no
-   * token, or recent writes still sitting in cookies.sqlite-wal (sql.js reads
-   * the main file only, and a forced close can leave the WAL un-checkpointed).
-   * Callers only block on a definite "anonymous".
+   * null when the cookies can't be read reliably: no cookies.sqlite, or recent
+   * writes still in cookies.sqlite-wal (sql.js reads the main file only).
    */
-  private async checkVintedLogin(profilePath: string): Promise<"logged-in" | "anonymous" | "unknown"> {
+  private async readVintedCookies(profilePath: string): Promise<VintedCookie[] | null> {
     const dbPath = path.join(profilePath, "cookies.sqlite");
     const walPath = `${dbPath}-wal`;
-    if (!existsSync(dbPath)) return "unknown";
-    const walHasData = existsSync(walPath) && statSync(walPath).size > 0;
+    if (!existsSync(dbPath)) return null;
+    if (existsSync(walPath) && statSync(walPath).size > 0) {
+      console.warn(`[InteractiveLogin] cookies.sqlite has un-checkpointed writes; not reading it`);
+      return null;
+    }
 
     try {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -214,31 +241,63 @@ export class InteractiveSessionExtractor {
       const SQL = await initSqlJs();
       const db = new SQL.Database(readFileSync(dbPath));
       const rows = db.exec(
-        "SELECT value FROM moz_cookies WHERE host LIKE '%vinted.%' AND name IN ('refresh_token_web', 'access_token_web')"
+        "SELECT name, value, host, path, expiry, isSecure, isHttpOnly, sameSite FROM moz_cookies " +
+          "WHERE host LIKE '%vinted.%' AND (originAttributes IS NULL OR originAttributes = '')"
       );
       db.close();
 
-      const tokens: string[] = rows.length ? rows[0].values.map((v: unknown[]) => String(v[0])) : [];
-      for (const token of tokens) {
-        const claims = JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8"));
-        if (claims.sub || (claims.scope && claims.scope !== "public")) {
-          console.log(`[InteractiveLogin] Vinted session is logged in (scope: ${claims.scope})`);
-          return "logged-in";
-        }
-      }
-
-      if (tokens.length && !walHasData) {
-        console.warn(`[InteractiveLogin] Vinted session is anonymous (only scope "public" tokens)`);
-        return "anonymous";
-      }
-      console.warn(
-        `[InteractiveLogin] Could not tell whether Vinted is logged in (tokens: ${tokens.length}, WAL pending: ${walHasData})`
-      );
-      return "unknown";
+      const sameSiteNames: Record<number, VintedCookie["sameSite"]> = { 0: "None", 1: "Lax", 2: "Strict" };
+      return (rows[0]?.values ?? []).map((row: unknown[]) => {
+        const [name, value, host, cookiePath, expiry, isSecure, isHttpOnly, sameSite] = row;
+        const secure = Number(isSecure) === 1;
+        const expiryNumber = Number(expiry);
+        // Chromium drops SameSite=None cookies that aren't Secure; Firefox
+        // treats those as Lax anyway.
+        let sameSiteName = sameSiteNames[Number(sameSite)] ?? "Lax";
+        if (sameSiteName === "None" && !secure) sameSiteName = "Lax";
+        return {
+          name: String(name),
+          value: String(value),
+          domain: String(host),
+          path: String(cookiePath || "/"),
+          // Firefox 15x stores expiry in milliseconds, older ones in seconds.
+          expires: expiryNumber > 1e11 ? Math.floor(expiryNumber / 1000) : expiryNumber,
+          secure,
+          httpOnly: Number(isHttpOnly) === 1,
+          sameSite: sameSiteName,
+        };
+      });
     } catch (e) {
       console.warn(`[InteractiveLogin] Could not read Vinted cookies: ${e}`);
-      return "unknown";
+      return null;
     }
+  }
+
+  /**
+   * Whether the saved cookies hold a logged-in Vinted session.
+   *
+   * Vinted hands every visitor access_token_web/refresh_token_web cookies, so
+   * their presence proves nothing. They are JWTs, though: an anonymous one
+   * has scope "public" and no subject; a logged-in one names the user.
+   */
+  private vintedLoginState(cookies: VintedCookie[] | null): "logged-in" | "anonymous" | "unknown" {
+    const tokens = (cookies ?? []).filter(
+      (c) => c.name === "refresh_token_web" || c.name === "access_token_web"
+    );
+    if (!tokens.length) return "unknown";
+
+    for (const token of tokens) {
+      try {
+        const claims = JSON.parse(Buffer.from(token.value.split(".")[1] ?? "", "base64url").toString("utf8"));
+        console.log(
+          `[InteractiveLogin] Vinted ${claims.purpose ?? "?"} token: scope=${claims.scope ?? "?"}, user=${claims.sub ? "yes" : "no"}`
+        );
+        if (claims.sub || (claims.scope && claims.scope !== "public")) return "logged-in";
+      } catch {
+        // Not a JWT we can read; judge by the others.
+      }
+    }
+    return "anonymous";
   }
 
   /**
@@ -353,39 +412,59 @@ export class InteractiveSessionExtractor {
 
       // Wait for user to close browser or timeout
       let closed = false;
+      let timedOut = false;
       const waitForClose = new Promise<void>((resolve) => {
-        browserProc.on("exit", () => {
-          closed = true;
-          resolve();
-        });
-
-        setTimeout(async () => {
+        // Cleared when the user closes the window, so it doesn't sit armed
+        // (holding this login's state) for the rest of the timeout.
+        const timer = setTimeout(async () => {
           if (!closed) {
+            timedOut = true;
             console.log(`[InteractiveLogin] Timeout reached (${timeout}s), terminating browser...`);
             await this.terminateBrowser(browserProc, launchedProfileDir, () => closed);
           }
           resolve();
         }, timeout * 1000);
+
+        browserProc.on("exit", () => {
+          closed = true;
+          clearTimeout(timer);
+          resolve();
+        });
       });
 
       await waitForClose;
 
       const loginDuration = Date.now() - loginStartTime;
-      console.log(`[InteractiveLogin] Browser closed after ${(loginDuration / 1000).toFixed(1)}s`);
+      console.log(
+        `[InteractiveLogin] Browser closed after ${(loginDuration / 1000).toFixed(1)}s ` +
+          (timedOut ? `(closed by the ${timeout}s timeout)` : `(closed by the user)`)
+      );
+
+      // Closing the window is how the user says "I'm logged in, save this".
+      // When the timeout closed it instead, nothing is archived, uploaded or
+      // linked; the temp profile is discarded in the finally below.
+      if (timedOut) {
+        const limit = timeout >= 60 ? `${Math.round(timeout / 60)} minutes` : `${timeout} seconds`;
+        throw new Error(
+          `Time ran out (${limit}) before you closed the login window, so nothing was saved. ` +
+            `Start again, log in, then close the window yourself to save the session. ` +
+            `You can allow more time under Advanced Options.`
+        );
+      }
 
       // Give OS time to release file locks
       await new Promise(resolve => setTimeout(resolve, 1000));
 
       this.cleanFirefoxProfile(this.tempProfileDir);
 
-      // Don't archive (and later upload and link) a profile nobody logged in on,
-      // e.g. when the window was closed early or the wait timed out.
-      const login = await this.checkVintedLogin(this.tempProfileDir);
-      if (login === "anonymous") {
-        throw new Error(
-          "You're not logged in to Vinted. Log in in the window that opens, then close it."
-        );
-      }
+      // Recorded, never blocking. A check that stopped here would also throw
+      // away the profile (cleaned up below), losing a real login if the check
+      // were ever wrong - so the profile is always archived and uploaded.
+      const vintedCookies = await this.readVintedCookies(this.tempProfileDir);
+      const login = this.vintedLoginState(vintedCookies);
+      console.log(
+        `[InteractiveLogin] Vinted login state when the window closed: ${login}`
+      );
 
       // Phase 2: Compress entire profile folder to tar.gz
       console.log(`[InteractiveLogin] Phase 2: Compressing profile folder to tar.gz...`);
@@ -393,7 +472,10 @@ export class InteractiveSessionExtractor {
       const archivePath = path.join(os.tmpdir(), `vinted_login_${profileName}_${Date.now()}.tar.gz`);
 
       try {
-        // Same contents as ProfileUploader: session state, no caches.
+        // The whole profile minus what Firefox rebuilds by itself (caches,
+        // crash data, downloadable components) - see profileArchive. The
+        // complete folder is 100+ MB compressed, over Cloudflare's 100 MB
+        // request limit in front of api.vinbot.app, and was rejected with 413.
         await tar.create(
           {
             gzip: true,
@@ -422,6 +504,8 @@ export class InteractiveSessionExtractor {
           extracted_at: Date.now(),
           loginDuration: loginDuration,
           compressed_at: Date.now(),
+          vinted_login: login,
+          vinted_cookies: vintedCookies ?? [],
         };
 
         return result;

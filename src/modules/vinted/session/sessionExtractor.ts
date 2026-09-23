@@ -18,6 +18,7 @@ export interface SessionCookie {
   secure: boolean;
   httpOnly?: boolean;
   expires?: number;
+  sameSite?: "Strict" | "Lax" | "None";
 }
 
 export interface SessionStorage {

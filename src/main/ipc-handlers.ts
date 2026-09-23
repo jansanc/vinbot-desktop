@@ -639,6 +639,16 @@ function registerIPCHandlers() {
       sendProgress("COMPRESS_COMPLETE", `✅ Profile compressed to tar.gz`);
       sendProgress("ARCHIVE", `Profile archive: ${(result.profile_archive_size / (1024 * 1024)).toFixed(2)}MB`);
       sendProgress("DURATION", `Login took ${(result.loginDuration / 1000).toFixed(1)} seconds`);
+      // Informational: the step name avoids "WARNING"/"ERROR", which the UI
+      // treats as a failure and would stop showing progress for.
+      sendProgress(
+        "LOGIN_STATE",
+        result.vinted_login === "logged-in"
+          ? "✅ Vinted session is logged in"
+          : result.vinted_login === "anonymous"
+            ? "ℹ️ Vinted cookies look logged out - uploading the profile anyway"
+            : "ℹ️ Couldn't read the Vinted login state - uploading the profile anyway"
+      );
 
       const tokenValid = accessToken && accessToken.trim().length > 0;
       const hasValidToken = accessToken && accessToken.trim().length > 0;
@@ -971,29 +981,22 @@ function registerIPCHandlers() {
           try {
             sendProgress("LINK_START", `📝 Linking Vinted account...`);
 
-            // Create minimal extracted session with placeholder cookie
-            // The temporary profile is cleaned up after login, so we use a placeholder
-            // User can later refresh with full session data via updateSessionOnly
-            const placeholderCookie = {
-              name: "vinted_login_timestamp",
-              value: new Date().toISOString(),
-              domain: ".vinted.com",
-              path: "/",
-              secure: true,
-            };
-
+            // The real Vinted cookies from the login profile, read before it
+            // was deleted. The API stores them as the account's session, which
+            // the backend's (Chromium) browser engine bootstraps from - it
+            // cannot open the Firefox profile archive itself. This used to send
+            // a placeholder cookie, so the engine started with no session.
+            sendProgress("SESSION_COOKIES", `🍪 Sending ${result.vinted_cookies.length} Vinted cookie(s)`);
             const extractedSession = {
               profile_name: result.profile_name,
               profile_path: result.profile_path,
               url: result.url,
-              cookies: [placeholderCookie], // Placeholder to satisfy API requirement
+              cookies: result.vinted_cookies,
               storage: {
-                localStorage: {
-                  vinted_login_time: new Date().toISOString(),
-                },
+                localStorage: {},
                 sessionStorage: {},
               },
-              extracted_at: Date.now(),
+              extracted_at: result.extracted_at,
             };
 
             // Link account via consolidated endpoint

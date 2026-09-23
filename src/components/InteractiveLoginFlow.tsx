@@ -208,7 +208,7 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
   return (
     <div className="min-h-screen bg-gradient-to-br dark:from-slate-900 dark:to-slate-800 from-gray-50 to-gray-100 p-4 md:p-8">
       <div className="max-w-3xl mx-auto">
-        {/* Header */}
+        {/* Header */}1
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-4">
             <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30">

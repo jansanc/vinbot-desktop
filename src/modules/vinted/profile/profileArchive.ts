@@ -49,11 +49,24 @@ const EXCLUDED_DIRS = new Set(
     "crashes",
     "saved-telemetry-pings",
     "datareporting",
+    // Certificate revocation data (CRLite), ~18 MB, re-downloaded by Firefox
+    "security_state",
     "gmp",
     "gmp-gmpopenh264",
     "gmp-widevinecdm",
   ].map((d) => d.toLowerCase()),
 );
+
+/**
+ * Paths (relative to the profile root) dropped as a whole. For folders whose
+ * name alone is too generic to exclude everywhere.
+ */
+const EXCLUDED_PATHS = [
+  // Firefox's own chrome-privileged IndexedDB: Remote Settings and similar
+  // browser-internal data (~20 MB), re-synced by Firefox. Site storage lives
+  // in storage/default and is kept.
+  "storage/permanent/chrome",
+].map((p) => p.toLowerCase());
 
 /** File names dropped wherever they appear. */
 const EXCLUDED_FILES = new Set(
@@ -76,6 +89,11 @@ export function includeInProfileArchive(entryPath: string): boolean {
   const segments = entryPath.split(/[\/]/).filter(Boolean);
 
   // The first segment is the profile folder itself - always keep it.
+  const relative = segments.slice(1).join("/").toLowerCase();
+  if (EXCLUDED_PATHS.some((p) => relative === p || relative.startsWith(p + "/"))) {
+    return false;
+  }
+
   for (const segment of segments.slice(1)) {
     const name = segment.toLowerCase();
     if (EXCLUDED_DIRS.has(name)) return false;

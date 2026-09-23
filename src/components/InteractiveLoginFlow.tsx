@@ -26,7 +26,6 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
   const { addError } = useError();
   const [url, setUrl] = useState("https://www.vinted.es/member/signup/select_type?ref_url=%2F");
   const [profileName, setProfileName] = useState("");
-  const [browser, setBrowser] = useState<"chrome" | "firefox" | "edge">("firefox");
   const [timeout, setTimeout] = useState(5);
   const [userEmail, setUserEmail] = useState(initialUserId);
   const [vintedEmail, setVintedEmail] = useState("");
@@ -153,7 +152,6 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
       const response = await electronAPI.interactiveLogin({
         url: url.trim(),
         profileName: finalProfileName,
-        browser,
         timeout: timeout * 60, // Convert minutes to seconds
         userEmail: userEmail.trim(),
         vintedEmail: vintedEmail.trim(),
@@ -221,7 +219,7 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
             </h1>
           </div>
           <p className="text-base md:text-lg dark:text-gray-400 text-gray-700 ml-11">
-            We'll open your browser for you to log in. Just close it when done, and your session will be saved automatically.
+            We'll open Firefox for you to log in. Just close it when done, and your session will be saved automatically.
           </p>
         </div>
 
@@ -303,22 +301,6 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
 
                 {showAdvanced && (
                   <div className="mt-4 space-y-4 p-4 rounded-lg bg-gray-50 dark:bg-slate-900/30">
-                    {/* Browser Select */}
-                    <div className="space-y-2">
-                      <Label htmlFor="browser">Browser</Label>
-                      <select
-                        id="browser"
-                        value={browser}
-                        onChange={(e) => setBrowser(e.target.value as "chrome" | "firefox" | "edge")}
-                        disabled={isLoading}
-                        className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-                      >
-                        <option value="firefox">Firefox (Recommended)</option>
-                        <option value="chrome">Chrome</option>
-                        <option value="edge">Edge</option>
-                      </select>
-                    </div>
-
                     {/* Timeout Input */}
                     <div className="space-y-2">
                       <Label htmlFor="timeout">Wait Time (minutes)</Label>

@@ -84,14 +84,8 @@ export default function ExtractionForm({
         throw new Error("Electron API not available");
       }
 
-      const profile =
-        selectedBrowser === "firefox"
-          ? selectedProfile
-          : selectedBrowser === "chrome"
-            ? selectedProfile || "Default"
-            : selectedProfile || "Default";
-
-      await electronAPI.openBrowserWithProfile(selectedBrowser, profile);
+      // Only Firefox is ever launched by this app.
+      await electronAPI.openBrowserWithProfile("firefox", selectedProfile);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to open browser"
@@ -212,7 +206,7 @@ export default function ExtractionForm({
                     Profile{" "}
                     <span className="text-destructive">*</span>
                   </label>
-                  {selectedProfile && (
+                  {selectedProfile && selectedBrowser === "firefox" && (
                     <button
                       type="button"
                       onClick={handleOpenBrowser}

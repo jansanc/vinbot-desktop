@@ -455,46 +455,26 @@ function registerIPCHandlers() {
     await shell.openExternal(url);
   });
 
-  // Open browser with specific profile
+  // Open a Firefox profile. This app only ever launches Firefox; Chrome and
+  // Edge profiles can still be read for cookies, but are never started.
   ipcMain.handle("browser:open", async (event, browser, profile) => {
     try {
+      if (browser !== "firefox") {
+        throw new Error(`Only Firefox can be opened from this app (got: ${browser})`);
+      }
+
       const appData = process.env.APPDATA || "";
       const programFiles = process.env.ProgramFiles || "C:\\Program Files";
       const programFilesX86 = process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)";
 
-      let command: string;
-      let args: string[] = [];
-
-      if (browser === "firefox") {
-        const firefoxPaths = [
-          path.join(programFiles, "Mozilla Firefox", "firefox.exe"),
-          path.join(programFilesX86, "Mozilla Firefox", "firefox.exe"),
-        ];
-        command = firefoxPaths.find(p => existsSync(p)) || firefoxPaths[0];
-        if (profile) {
-          args = ["-profile", path.join(appData, "Mozilla\\Firefox\\Profiles", profile)];
-        }
-      } else if (browser === "chrome") {
-        const chromePaths = [
-          path.join(programFiles, "Google", "Chrome", "Application", "chrome.exe"),
-          path.join(programFilesX86, "Google", "Chrome", "Application", "chrome.exe"),
-        ];
-        command = chromePaths.find(p => existsSync(p)) || chromePaths[0];
-        if (profile && profile !== "Default") {
-          args = [`--profile-directory=${profile}`];
-        }
-      } else if (browser === "edge") {
-        const edgePaths = [
-          path.join(programFiles, "Microsoft", "Edge", "Application", "msedge.exe"),
-          path.join(programFilesX86, "Microsoft", "Edge", "Application", "msedge.exe"),
-        ];
-        command = edgePaths.find(p => existsSync(p)) || edgePaths[0];
-        if (profile && profile !== "Default") {
-          args = [`--profile-directory=${profile}`];
-        }
-      } else {
-        throw new Error(`Unsupported browser: ${browser}`);
-      }
+      const firefoxPaths = [
+        path.join(programFiles, "Mozilla Firefox", "firefox.exe"),
+        path.join(programFilesX86, "Mozilla Firefox", "firefox.exe"),
+      ];
+      const command = firefoxPaths.find(p => existsSync(p)) || firefoxPaths[0];
+      const args = profile
+        ? ["-profile", path.join(appData, "Mozilla\\Firefox\\Profiles", profile)]
+        : [];
 
       spawn(command, args, { detached: true, stdio: "ignore" });
       return { success: true };
@@ -595,7 +575,6 @@ function registerIPCHandlers() {
   ipcMain.handle("vinted:interactiveLogin", async (event, options: {
     url: string;
     profileName: string;
-    browser: "chrome" | "firefox" | "edge";
     timeout?: number;
     userEmail?: string;
     vintedEmail?: string;
@@ -603,11 +582,13 @@ function registerIPCHandlers() {
     accessToken?: string;
     uploadToS3?: boolean;
   }) => {
+    // The archive only exists to be uploaded; remove it however the flow ends
+    // so each login doesn't leave ~20 MB behind in %TEMP%.
+    let archivePath: string | undefined;
     try {
       const {
         url,
         profileName,
-        browser,
         timeout = 300,
         userEmail,
         vintedEmail,
@@ -643,7 +624,7 @@ function registerIPCHandlers() {
         };
       }
 
-      sendProgress("START", `🚀 Opening ${browser} for interactive login...`);
+      sendProgress("START", `🚀 Opening Firefox for interactive login...`);
       sendProgress("URL", `Login URL: ${url}`);
       sendProgress("TIMEOUT", `User has ${timeout} seconds to log in`);
 
@@ -651,9 +632,9 @@ function registerIPCHandlers() {
       const result = await extractor.interactiveLogin({
         url,
         profileName,
-        browser,
         timeout,
       });
+      archivePath = result.profile_archive_path;
 
       sendProgress("COMPRESS_COMPLETE", `✅ Profile compressed to tar.gz`);
       sendProgress("ARCHIVE", `Profile archive: ${(result.profile_archive_size / (1024 * 1024)).toFixed(2)}MB`);
@@ -782,7 +763,7 @@ function registerIPCHandlers() {
           );
 
           const uploaded = await ApiService.uploadBrowserProfile(accessToken, {
-            browser,
+            browser: "firefox",
             profileId: profileName,
             profileName,
             vintedAccountId: vintedMemberId || profileName,
@@ -1122,6 +1103,14 @@ function registerIPCHandlers() {
         success: false,
         message: errorMessage,
       };
+    } finally {
+      if (archivePath) {
+        try {
+          fs.rmSync(archivePath, { force: true });
+        } catch (e) {
+          console.warn(`[IPC] Could not delete profile archive ${archivePath}: ${e}`);
+        }
+      }
     }
   });
 

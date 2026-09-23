@@ -38,11 +38,14 @@ interface ImportChoice {
 
 /** A row per logged-in site, or one disabled row for a profile with none. */
 function importChoices(profiles: FirefoxProfileSession[]): ImportChoice[] {
-  return profiles.flatMap((profile) =>
-    profile.session.sites.length
-      ? profile.session.sites.map((site) => ({ key: `${profile.path}|${site.site}`, profile, site }))
-      : [{ key: profile.path, profile }]
-  );
+  return profiles.flatMap((profile) => {
+    // `sites` is missing when the main process predates it (in development the
+    // renderer hot-reloads but main is only compiled on `npm start`).
+    const sites = profile.session?.sites ?? [];
+    return sites.length
+      ? sites.map((site) => ({ key: `${profile.path}|${site.site}`, profile, site }))
+      : [{ key: profile.path, profile }];
+  });
 }
 
 /** "login": open a fresh Firefox to log in. "import": reuse the user's own Firefox session. */

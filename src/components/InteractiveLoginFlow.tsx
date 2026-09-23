@@ -430,7 +430,9 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
                               >
                                 {profile.error
                                   ? "Couldn't read this profile"
-                                  : usable
+                                  : !profile.session?.sites
+                                    ? "App needs a restart to read this profile"
+                                    : usable
                                     ? `Logged in on ${site!.site}` + (site!.userId ? ` · member ${site!.userId}` : "")
                                     : profile.session.state === "anonymous"
                                       ? "Not logged in to Vinted"

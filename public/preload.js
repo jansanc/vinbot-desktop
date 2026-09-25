@@ -20,6 +20,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.on("auth:session-refreshed", listener);
       return () => ipcRenderer.removeListener("auth:session-refreshed", listener);
     },
+    // An upload or link in main hit a dead session. Returns unsubscribe.
+    onUnauthorized: (callback) => {
+      const listener = (event, detail) => callback(detail);
+      ipcRenderer.on("auth:unauthorized", listener);
+      return () => ipcRenderer.removeListener("auth:unauthorized", listener);
+    },
   },
   extractVintedSession: (options) =>
     ipcRenderer.invoke("extract:vinted:session", options),

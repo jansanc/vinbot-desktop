@@ -49,7 +49,7 @@ export class SessionUploadService {
   static async linkVintedAccount(
     session: ExtractedSession,
     options: SessionUploadOptions
-  ): Promise<{ success: boolean; id?: string; message: string }> {
+  ): Promise<{ success: boolean; id?: string; message: string; unauthorized?: boolean }> {
     try {
       // Ensure access token is provided
       if (!options.accessToken || options.accessToken.trim() === "") {
@@ -134,6 +134,7 @@ export class SessionUploadService {
         return {
           success: false,
           message: `Account link note: ${errorMsg}`,
+          unauthorized: response.status === 401,
         };
       }
 

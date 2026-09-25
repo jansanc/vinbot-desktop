@@ -22,6 +22,7 @@ import { SessionUploadService } from "../modules/vinted/session/sessionUpload.se
 import { ProfileUploader } from "../modules/vinted/profile/profileUploader";
 import { registerAuthHandlers } from "./api/auth.handlers";
 import { tokenStore } from "./api/token-store";
+import { UnauthorizedError } from "../services/errors";
 
 // Dynamically import sql.js
 const initSqlJs = require("sql.js");
@@ -340,6 +341,17 @@ function getEdgeProfilesWithNames(): ProfileInfo[] {
 type ProgressSender = (step: string, message: string) => void;
 
 /**
+ * The renderer logs the user out on an UnauthorizedError, but only one that
+ * comes back through the api bridge. Uploads and links run here and turn every
+ * failure into a plain result, so a dead session used to end on "User not
+ * authenticated" with the user left on the page. Tell the renderer directly.
+ */
+function signalUnauthorized(sender: Electron.WebContents, error: unknown): void {
+  if (!(error instanceof UnauthorizedError)) return;
+  sender.send("auth:unauthorized", { message: error.message });
+}
+
+/**
  * Upload a captured session's profile archive to S3, then link the Vinted
  * account with its cookies. Shared by every way of getting a session: the
  * interactive login and the import from the user's own Firefox. Progress and
@@ -385,6 +397,7 @@ async function uploadAndLinkSession(
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     console.error(`[IPC] Could not get a valid access token: ${errorMsg}`);
+    signalUnauthorized(event.sender, error);
     return {
       success: false,
       session: result,
@@ -546,6 +559,7 @@ async function uploadAndLinkSession(
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       console.error(`[IPC] Profile upload error caught:`, error);
+      signalUnauthorized(event.sender, error);
 
       // Send both warning progress and error event for better visibility
       sendProgress("PROFILE_UPLOAD_WARNING", `⚠️ Profile upload note: ${errorMsg}`);
@@ -761,6 +775,9 @@ async function uploadAndLinkSession(
             message: "Account linked successfully",
           };
         } else {
+          if (linkResult.unauthorized) {
+            signalUnauthorized(event.sender, new UnauthorizedError(linkResult.message));
+          }
           sendProgress("LINK_WARNING", `⚠️ Account link note: ${linkResult.message}`);
           console.error(`[IPC] Account linking failed - will NOT save session:`, linkResult.message);
           uploadResult = {
@@ -1480,6 +1497,7 @@ function registerIPCHandlers() {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error(`[IPC] Profile upload failed: ${errorMessage}`);
+      signalUnauthorized(event.sender, error);
       return {
         success: false,
         error: errorMessage,
@@ -1615,6 +1633,12 @@ function registerIPCHandlers() {
           const errorMessage = error instanceof Error ? error.message : String(error);
           const totalTime = Date.now() - profileStartTime;
           console.error(`[IPC] ❌ ${profile.name} failed after ${totalTime}ms: ${errorMessage}\n`);
+          if (error instanceof UnauthorizedError) {
+            // Every remaining profile would fail the same way.
+            signalUnauthorized(event.sender, error);
+            results.push({ profileName: profile.name, success: false, error: errorMessage });
+            break;
+          }
           results.push({
             profileName: profile.name,
             success: false,

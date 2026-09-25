@@ -34,6 +34,7 @@ declare global {
             expiresAt: number;
           }) => void
         ) => () => void;
+        onUnauthorized?: (callback: (detail: { message: string }) => void) => () => void;
       };
       extractVintedSession: (options: {
         firefoxProfile: string;

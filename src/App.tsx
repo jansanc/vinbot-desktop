@@ -79,9 +79,20 @@ function AppContent() {
       if (AuthService.getSession()) AuthService.saveSession(session);
     });
 
+    // Uploads and links run in main, outside the api bridge that raises
+    // `auth:unauthorized`; main reports their 401s here instead.
+    const offUnauthorized = window.electronAPI?.auth?.onUnauthorized?.((detail) =>
+      window.dispatchEvent(
+        new CustomEvent("auth:unauthorized", {
+          detail: { status: 401, statusText: "Unauthorized", message: detail.message },
+        })
+      )
+    );
+
     return () => {
       window.removeEventListener("auth:unauthorized", handleUnauthorized);
       offSessionRefreshed?.();
+      offUnauthorized?.();
     };
   }, []);
 

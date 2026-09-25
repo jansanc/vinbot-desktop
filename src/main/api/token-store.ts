@@ -1,6 +1,7 @@
 import { app, safeStorage } from "electron";
 import path from "path";
 import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync } from "fs";
+import { ApiService } from "../../services/api.service";
 
 /**
  * Authoritative session store for the main process.
@@ -110,5 +111,38 @@ export const tokenStore = {
       throw new Error("No authenticated session found. Please log in again.");
     }
     return session.accessToken;
+  },
+
+  /**
+   * Token for a call that starts now, refreshing the stored session first when
+   * it is about to expire. The token the renderer passes was read when its page
+   * mounted - a login window alone can stay open for an hour after that - so an
+   * upload used to fail with 401 at the very end, after the user had logged in.
+   *
+   * The stored session is never older than the renderer's (every login and
+   * refresh goes through main), so it wins; `provided` is only the fallback for
+   * when nothing is stored (no safeStorage backend, after a restart).
+   * `onRefreshed` hands a new session to whoever keeps a copy of it.
+   */
+  async freshAccessToken(
+    provided?: string,
+    onRefreshed?: (session: StoredSession) => void
+  ): Promise<string> {
+    const stored = this.get();
+    if (stored?.accessToken) {
+      const expiresAtMs = stored.expiresAt * 1000;
+      if (!stored.expiresAt || expiresAtMs - 60_000 > Date.now()) return stored.accessToken;
+
+      if (stored.refreshToken) {
+        const response = await ApiService.refreshToken(stored.refreshToken);
+        const session = response.data?.session;
+        if (session?.accessToken) {
+          this.set(session);
+          onRefreshed?.(session);
+          return session.accessToken;
+        }
+      }
+    }
+    return this.resolveAccessToken(provided);
   },
 };

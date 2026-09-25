@@ -13,6 +13,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
     storeDesktopSession: (payload) =>
       ipcRenderer.invoke("api:storeDesktopSession", payload),
     getStoredSession: () => ipcRenderer.invoke("api:getStoredSession"),
+    // Main refreshed the session on its own (before an upload); the renderer
+    // stores the new tokens so its copy doesn't go stale. Returns unsubscribe.
+    onSessionRefreshed: (callback) => {
+      const listener = (event, session) => callback(session);
+      ipcRenderer.on("auth:session-refreshed", listener);
+      return () => ipcRenderer.removeListener("auth:session-refreshed", listener);
+    },
   },
   extractVintedSession: (options) =>
     ipcRenderer.invoke("extract:vinted:session", options),

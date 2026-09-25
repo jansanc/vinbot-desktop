@@ -48,6 +48,11 @@ function importChoices(profiles: FirefoxProfileSession[]): ImportChoice[] {
   });
 }
 
+/** An imported session is a few KB, a login's profile several MB. */
+function formatSize(bytes: number): string {
+  return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 /** "login": open a fresh Firefox to log in. "import": reuse the user's own Firefox session. */
 type Mode = "login" | "import";
 
@@ -73,7 +78,12 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [hasError, setHasError] = useState(false);
+  // A ref, not state: the IPC listeners are registered once, and state they
+  // closed over would stay at its first value (false) forever.
+  const hasErrorRef = useRef(false);
+  const setHasError = (value: boolean) => {
+    hasErrorRef.current = value;
+  };
   const [mode, setMode] = useState<Mode>("login");
   const modeChosen = useRef(false);
   const [firefoxProfiles, setFirefoxProfiles] = useState<FirefoxProfileSession[]>([]);
@@ -157,7 +167,7 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
         setResult(null);
 
         addError(progressError, `InteractiveLoginFlow.IPC.${step}`);
-      } else if (!hasError) {
+      } else if (!hasErrorRef.current) {
         // Only add progress if no error has occurred yet
         setProgress((prev) => [...prev, data]);
       }
@@ -302,7 +312,7 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
   return (
     <div className="min-h-screen bg-gradient-to-br dark:from-slate-900 dark:to-slate-800 from-gray-50 to-gray-100 p-4 md:p-8">
       <div className="max-w-3xl mx-auto">
-        {/* Header */}1
+        {/* Header */}
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-4">
             <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30">
@@ -584,7 +594,7 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
                 Your Vinted session has been saved and uploaded to the cloud.
               </p>
               <p className="text-sm dark:text-gray-500 text-gray-600 mb-6">
-                Session size: {((result.profile_archive_size || 0) / (1024 * 1024)).toFixed(1)} MB
+                Session size: {formatSize(result.profile_archive_size || 0)}
               </p>
               <Button
                 onClick={handleReset}

@@ -26,6 +26,14 @@ declare global {
         getStoredSession: () => Promise<
           IpcResult<{ hasSession: boolean; expiresAt: number; expiresIn: number } | null>
         >;
+        onSessionRefreshed?: (
+          callback: (session: {
+            accessToken: string;
+            refreshToken: string;
+            expiresIn: number;
+            expiresAt: number;
+          }) => void
+        ) => () => void;
       };
       extractVintedSession: (options: {
         firefoxProfile: string;

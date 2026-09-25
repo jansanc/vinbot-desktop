@@ -11,7 +11,7 @@ import {
   copyFileSync,
 } from "fs";
 import * as tar from "tar";
-import { includeInProfileArchive } from "../profile/profileArchive";
+import { archiveNamePart, includeInProfileArchive } from "../profile/profileArchive";
 import type { InteractiveLoginResult, VintedCookie } from "./interactiveSessionExtractor";
 
 /**
@@ -572,7 +572,7 @@ export async function importFirefoxSession(options: FirefoxImportOptions): Promi
       }
     }
 
-    const archivePath = path.join(os.tmpdir(), `vinted_import_${profileName}_${Date.now()}.tar.gz`);
+    const archivePath = path.join(os.tmpdir(), `vinted_import_${archiveNamePart(profileName)}_${Date.now()}.tar.gz`);
     await tar.create(
       { gzip: true, file: archivePath, cwd: workDir, filter: includeInProfileArchive },
       [path.basename(newProfile)]

@@ -73,7 +73,7 @@ const EXCLUDED_FILES = new Set(
  * excludes everything under it, since tar tests each entry it walks into.
  */
 export function includeInProfileArchive(entryPath: string): boolean {
-  const segments = entryPath.split(/[\/]/).filter(Boolean);
+  const segments = entryPath.split(/[\\/]/).filter(Boolean);
 
   // The first segment is the profile folder itself - always keep it.
   for (const segment of segments.slice(1)) {
@@ -83,4 +83,13 @@ export function includeInProfileArchive(entryPath: string): boolean {
   }
 
   return true;
+}
+
+/**
+ * A user-chosen name made safe to put in an archive's file name. The session
+ * name is free text: a "/", "\", ":" or ".." in it would otherwise point the
+ * archive path at a folder that doesn't exist, or outside the temp folder.
+ */
+export function archiveNamePart(name: string): string {
+  return name.replace(/[^\w.-]+/g, "_").replace(/^\.+/, "_").slice(0, 80) || "profile";
 }

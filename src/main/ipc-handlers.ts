@@ -16,6 +16,7 @@ import {
 import {
   findFirefoxVintedSessions,
   importFirefoxSession,
+  vintedSiteOf,
 } from "../modules/vinted/session/firefoxSessionImporter";
 import { SessionUploadService } from "../modules/vinted/session/sessionUpload.service";
 import { ProfileUploader } from "../modules/vinted/profile/profileUploader";
@@ -359,7 +360,40 @@ async function uploadAndLinkSession(
   },
   sendProgress: ProgressSender
 ) {
-  const { profileName, userEmail, vintedEmail, vintedMemberId, accessToken, uploadToS3, metadata } = options;
+  const { profileName, userEmail, vintedEmail, vintedMemberId, uploadToS3, metadata } = options;
+
+  // Without these both the upload and the link below are skipped, and the flow
+  // used to end reporting success with nothing saved.
+  if (!userEmail || !vintedEmail) {
+    const missing = [!userEmail && "your account id", !vintedEmail && "the Vinted email"].filter(Boolean).join(" and ");
+    return {
+      success: false,
+      session: result,
+      profileUpload: null,
+      healthCheck: null,
+      accountLink: null,
+      message: `Session NOT saved: ${missing} missing. Log in again and retry.`,
+    };
+  }
+
+  // The renderer's token can be long expired by now (see freshAccessToken).
+  let accessToken: string;
+  try {
+    accessToken = await tokenStore.freshAccessToken(options.accessToken, (session) =>
+      event.sender.send("auth:session-refreshed", session)
+    );
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error(`[IPC] Could not get a valid access token: ${errorMsg}`);
+    return {
+      success: false,
+      session: result,
+      profileUpload: null,
+      healthCheck: null,
+      accountLink: null,
+      message: `Your session has expired. Please log in again. Session NOT saved. (${errorMsg})`,
+    };
+  }
 
   const tokenValid = accessToken && accessToken.trim().length > 0;
   const hasValidToken = accessToken && accessToken.trim().length > 0;
@@ -1221,7 +1255,11 @@ function registerIPCHandlers() {
       }
 
       sendProgress("IMPORT_START", `🦊 Reading Vinted session from Firefox profile "${profile.name}"...`);
-      const site = options.site ?? (profile.session.sites.length === 1 ? profile.session.sites[0].site : undefined);
+      // Normalized like the importer does ("www.vinted.es" -> "vinted.es"), so
+      // the member id lookup below matches the site that was imported.
+      const site = options.site
+        ? vintedSiteOf(options.site)
+        : profile.session.sites.length === 1 ? profile.session.sites[0].site : undefined;
       const result = await importFirefoxSession({ profilePath: profile.path, profileName, site });
       archivePath = result.profile_archive_path;
 
@@ -1340,6 +1378,10 @@ function registerIPCHandlers() {
       event.sender.send("upload-progress-log", { step, message, timestamp: new Date().toISOString() });
     };
 
+    // Deleted however the upload ends: a failed one used to leave the whole
+    // compressed profile behind in %TEMP%.
+    const tmpTarGzPath = path.join(os.tmpdir(), `profile_${Date.now()}.tar.gz`);
+
     try {
       sendProgress("START", `Starting profile upload: ${options.profileName}`);
 
@@ -1370,7 +1412,6 @@ function registerIPCHandlers() {
 
       // Step 1: Compress entire profile folder to tar.gz
       const uploader = new ProfileUploader();
-      const tmpTarGzPath = path.join(os.tmpdir(), `profile_${Date.now()}.tar.gz`);
       sendProgress("COMPRESS_START", `🚀 Compressing entire profile folder to tar.gz...`);
       sendProgress("SOURCE_DIR", `Source directory: ${fullProfilePath}`);
 
@@ -1443,6 +1484,8 @@ function registerIPCHandlers() {
         success: false,
         error: errorMessage,
       };
+    } finally {
+      fs.rmSync(tmpTarGzPath, { force: true });
     }
   });
 
@@ -1478,6 +1521,7 @@ function registerIPCHandlers() {
         const profile = options.profiles[i];
         console.log(`\n[IPC] ===== BATCH UPLOAD ${i + 1}/${options.profiles.length}: ${profile.name} =====`);
         const profileStartTime = Date.now();
+        const tmpTarGzPath = path.join(os.tmpdir(), `profile_${Date.now()}_${i}.tar.gz`);
 
         try {
           // Construct the full profile path
@@ -1507,7 +1551,6 @@ function registerIPCHandlers() {
 
           // Compress entire profile folder to tar.gz
           console.log(`[IPC] Compressing entire profile folder to tar.gz...`);
-          const tmpTarGzPath = path.join(os.tmpdir(), `profile_${Date.now()}_${i}.tar.gz`);
           const startCompress = Date.now();
           const compressedSize = await uploader.compressProfileToTarGz(
             fullProfilePath,
@@ -1577,6 +1620,8 @@ function registerIPCHandlers() {
             success: false,
             error: errorMessage,
           });
+        } finally {
+          fs.rmSync(tmpTarGzPath, { force: true });
         }
 
         // Send progress to renderer

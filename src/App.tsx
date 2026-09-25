@@ -73,8 +73,15 @@ function AppContent() {
 
     window.addEventListener("auth:unauthorized", handleUnauthorized);
 
+    // Main refreshes the session itself right before an upload; keep ours in
+    // step, or the next launch would refresh with a superseded token.
+    const offSessionRefreshed = window.electronAPI?.auth?.onSessionRefreshed?.((session) => {
+      if (AuthService.getSession()) AuthService.saveSession(session);
+    });
+
     return () => {
       window.removeEventListener("auth:unauthorized", handleUnauthorized);
+      offSessionRefreshed?.();
     };
   }, []);
 

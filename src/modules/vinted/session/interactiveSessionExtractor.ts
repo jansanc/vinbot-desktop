@@ -3,7 +3,7 @@ import os from "os";
 import { spawn, spawnSync, ChildProcess } from "child_process";
 import { existsSync, mkdirSync, writeFileSync, rmSync, statSync, readFileSync } from "fs";
 import * as tar from "tar";
-import { includeInProfileArchive } from "../profile/profileArchive";
+import { archiveNamePart, includeInProfileArchive } from "../profile/profileArchive";
 
 export interface InteractiveLoginOptions {
   url: string;
@@ -469,7 +469,7 @@ export class InteractiveSessionExtractor {
       // Phase 2: Compress entire profile folder to tar.gz
       console.log(`[InteractiveLogin] Phase 2: Compressing profile folder to tar.gz...`);
       const compressStartTime = Date.now();
-      const archivePath = path.join(os.tmpdir(), `vinted_login_${profileName}_${Date.now()}.tar.gz`);
+      const archivePath = path.join(os.tmpdir(), `vinted_login_${archiveNamePart(profileName)}_${Date.now()}.tar.gz`);
 
       try {
         // The whole profile minus what Firefox rebuilds by itself (caches,

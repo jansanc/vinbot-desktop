@@ -1,6 +1,6 @@
 # Authentication Setup Guide
 
-This guide explains the authentication system integrated into the Vinted Authenticator desktop app.
+This guide explains the authentication system integrated into the Vinbot Authenticator desktop app.
 
 ## Overview
 

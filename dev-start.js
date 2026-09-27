@@ -13,7 +13,7 @@ const path = require('path');
 const PORT = process.env.PORT || 3002;
 const HOST = process.env.HOST || 'localhost';
 
-console.log(`\n🚀 Starting Vinted Authenticator Development Server`);
+console.log(`\n🚀 Starting Vinbot Authenticator Development Server`);
 console.log(`   PORT: ${PORT}`);
 console.log(`   HOST: ${HOST}\n`);
 

@@ -1,7 +1,7 @@
 # Design System Improvements for Dark & Light Mode
 
 ## Overview
-Comprehensive design enhancements to improve visual consistency, contrast, and user experience across both light and dark modes in the Vinted Desktop Authenticator.
+Comprehensive design enhancements to improve visual consistency, contrast, and user experience across both light and dark modes in the Vinbot Authenticator.
 
 ## Color System Enhancements
 

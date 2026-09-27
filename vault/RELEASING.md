@@ -28,10 +28,10 @@ builds the renderer and packages it into `dist-app/`:
 
 | File | For |
 | --- | --- |
-| `Vinted-Authenticator-Setup-<version>.exe` | Windows installer: per-user, no admin needed, lets the user pick the folder, adds Start menu and desktop shortcuts and an uninstaller. Give this one to Windows users. |
-| `Vinted-Authenticator-Portable-<version>.exe` | Windows, runs without installing. |
-| `Vinted-Authenticator-<version>-mac.dmg` | macOS: open it, drag the app to Applications. Give this one to Mac users. |
-| `Vinted-Authenticator-<version>-mac.zip` | macOS, the same app zipped. |
+| `Vinbot-Authenticator-Setup-<version>.exe` | Windows installer: per-user, no admin needed, lets the user pick the folder, adds Start menu and desktop shortcuts and an uninstaller. Give this one to Windows users. |
+| `Vinbot-Authenticator-Portable-<version>.exe` | Windows, runs without installing. |
+| `Vinbot-Authenticator-<version>-mac.dmg` | macOS: open it, drag the app to Applications. Give this one to Mac users. |
+| `Vinbot-Authenticator-<version>-mac.zip` | macOS, the same app zipped. |
 | `latest*.yml`, `*.blockmap` | Only needed if auto-update is added later. |
 
 ## Signing

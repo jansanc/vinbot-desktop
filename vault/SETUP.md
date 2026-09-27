@@ -1,4 +1,4 @@
-# Vinted Desktop Authenticator - Setup Guide
+# Vinbot Authenticator - Setup Guide
 
 ## Overview
 You now have a complete Electron + React application that extracts Vinted session data from Firefox and saves it locally or to a database.
@@ -144,7 +144,7 @@ SUPABASE_KEY=your_supabase_key
 ### Expected Output Files
 When saving locally, you'll get:
 ```
-C:\Users\<username>\AppData\Roaming\Vinted Authenticator\vinted-auth\
+C:\Users\<username>\AppData\Roaming\Vinbot Authenticator\vinted-auth\
 ├── fingerprint.json      # Browser fingerprint data
 └── auth-vinted.json      # Session cookies and storage
 ```

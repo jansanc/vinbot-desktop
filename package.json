@@ -80,9 +80,9 @@
     ]
   },
   "build": {
-    "appId": "com.vinted.authenticator",
-    "productName": "Vinted Authenticator",
-    "copyright": "Copyright © 2026 Pol",
+    "appId": "com.vinbot.authenticator",
+    "productName": "Vinbot Authenticator",
+    "copyright": "Copyright © 2026 Vinbot",
     "extends": null,
     "asar": true,
     "files": [
@@ -124,11 +124,11 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Vinted Authenticator",
-      "artifactName": "Vinted-Authenticator-Setup-${version}.${ext}"
+      "shortcutName": "Vinbot Authenticator",
+      "artifactName": "Vinbot-Authenticator-Setup-${version}.${ext}"
     },
     "portable": {
-      "artifactName": "Vinted-Authenticator-Portable-${version}.${ext}"
+      "artifactName": "Vinbot-Authenticator-Portable-${version}.${ext}"
     },
     "mac": {
       "target": [
@@ -153,9 +153,9 @@
       "entitlementsInherit": "build-resources/entitlements.mac.plist",
       "minimumSystemVersion": "12.0",
       "extendInfo": {
-        "NSAppleEventsUsageDescription": "Vinted Authenticator asks the Firefox login window it opened to quit, so your session is saved."
+        "NSAppleEventsUsageDescription": "Vinbot Authenticator asks the Firefox login window it opened to quit, so your session is saved."
       },
-      "artifactName": "Vinted-Authenticator-${version}-mac.${ext}"
+      "artifactName": "Vinbot-Authenticator-${version}-mac.${ext}"
     }
   }
 }

@@ -24,7 +24,7 @@ REACT_APP_VINTED_BASE_URL=https://www.vinted.es
 # App Configuration
 # ============================================
 # Application display name
-REACT_APP_NAME=Vinted Desktop Authenticator
+REACT_APP_NAME=Vinbot Authenticator
 ```
 
 ### Optional Configuration

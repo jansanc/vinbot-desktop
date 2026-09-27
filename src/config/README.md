@@ -36,7 +36,7 @@ All configuration is driven by environment variables in `.env`:
 - `REACT_APP_VINTED_BASE_URL` — Vinted website URL (default: `https://www.vinted.es`)
 
 ### Application Configuration
-- `REACT_APP_NAME` — Application display name (default: `Vinted Desktop Authenticator`)
+- `REACT_APP_NAME` — Application display name (default: `Vinbot Authenticator`)
 
 ## Usage
 

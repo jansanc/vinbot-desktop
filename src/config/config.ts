@@ -47,7 +47,7 @@ export const config = {
     memoryStore,
   },
   app: {
-    name: "Vinted Desktop Authenticator",
+    name: "Vinbot Authenticator",
     version: "1.0.0",
   },
 };

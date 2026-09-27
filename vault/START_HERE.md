@@ -41,7 +41,7 @@ You should see in the terminal:
 ```
 
 And in the Electron window:
-- App loads with "Vinted Session Extractor" title
+- App loads with "Vinbot Authenticator" title
 - "Login Form" appears (or extraction form if already logged in)
 - Firefox profiles dropdown populates (after login)
 - **No errors in DevTools console** ✅

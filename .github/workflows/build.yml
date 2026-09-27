@@ -1,19 +1,34 @@
-# Builds the Windows and macOS installers. macOS builds need a Mac, so this is
-# the way to produce them from a Windows machine.
+# Builds the Windows and macOS installers and attaches them to a GitHub
+# Release. macOS builds need a Mac, so this is the way to produce them from a
+# Windows machine.
 #
-#   - Run it by hand (Actions > Build installers > Run workflow) and download
-#     the installers from the run's artifacts.
-#   - Or push a version tag (git tag v1.0.1 && git push origin v1.0.1) to also
-#     get a draft GitHub Release with the installers attached.
+#   - Publish a release on GitHub (Releases > Draft a new release > Publish):
+#     the installers are built from the release's tag and attached to it a few
+#     minutes later. Any tag name works.
+#   - For a release that already exists, or to rebuild one: Actions > Build
+#     installers > Run workflow, and enter its tag (e.g. 1.0.0).
+#   - Run it by hand with no tag to just build; download the installers from
+#     the run's artifacts.
+#
+# Bump "version" in package.json before tagging: it names the files.
 #
 # Without the Apple secrets below, the macOS app is only ad-hoc signed: it runs,
 # but macOS blocks it on first open (see vault/RELEASING.md).
 name: Build installers
 
 on:
+  release:
+    types: [published]
   workflow_dispatch:
-  push:
-    tags: ["v*"]
+    inputs:
+      tag:
+        description: "Existing release tag to build and attach the installers to (empty: just build)"
+        required: false
+        default: ""
+
+env:
+  # The release's tag, or the one typed in; empty for a plain build.
+  RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
 
 jobs:
   build:
@@ -22,12 +37,19 @@ jobs:
       matrix:
         os: [windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      # GitHub sets CI=true, which makes react-scripts fail the build on any
+      # lint warning.
+      CI: false
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Build the tagged code, not whatever the branch has now.
+          ref: ${{ env.RELEASE_TAG || github.ref }}
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - run: npm ci
@@ -64,11 +86,9 @@ jobs:
             dist-app/*.exe
             dist-app/*.dmg
             dist-app/*.zip
-            dist-app/*.blockmap
-            dist-app/latest*.yml
 
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'release' || inputs.tag != ''
     needs: build
     runs-on: ubuntu-latest
     permissions:
@@ -79,7 +99,9 @@ jobs:
           path: installers
           merge-multiple: true
 
-      - uses: softprops/action-gh-release@v2
-        with:
-          draft: true
-          files: installers/*
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -l installers
+          gh release upload "$RELEASE_TAG" installers/* --clobber --repo "$GITHUB_REPOSITORY"

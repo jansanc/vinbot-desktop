@@ -43,3 +43,6 @@ Thumbs.db
 # Vinted extracted data (local only)
 src/modules/vinted/auth/fingerprint.json
 src/modules/vinted/auth/auth-vinted.json
+
+# Packaged installers
+/dist-app

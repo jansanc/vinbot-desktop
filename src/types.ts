@@ -5,6 +5,8 @@ export type ExtractionState =
   | "complete"
   | "error";
 
+export type AuthState = "unauthenticated" | "authenticating" | "authenticated" | "error";
+
 export interface Fingerprint {
   extractedAt: string;
   browser: string;
@@ -27,7 +29,8 @@ export interface Fingerprint {
   systemInfo: {
     platform: string;
     arch: string;
-    firefoxVersion: string;
+    firefoxVersion?: string;
+    chromiumVersion?: string;
   };
 }
 
@@ -70,4 +73,10 @@ export interface ExtractionProgress {
     | "complete";
   message: string;
   progress: number;
+}
+
+export interface ProfileInfo {
+  id: string;
+  name: string;
+  path?: string;
 }

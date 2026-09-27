@@ -8,32 +8,61 @@
   "license": "MIT",
   "scripts": {
     "compile:main": "tsc --skipLibCheck",
-    "react-start": "react-scripts start",
-    "react-build": "react-scripts build",
-    "react-test": "react-scripts test",
+    "css:watch": "npx @tailwindcss/cli -i input.css -o public/output.css --watch",
+    "css:build": "npx @tailwindcss/cli -i input.css -o public/output.css",
+    "react-start": "craco start",
+    "react-build": "npm run css:build && craco build",
+    "react-test": "craco test",
     "react-eject": "react-scripts eject",
-    "electron-dev": "npm run compile:main && concurrently \"npm run react-start\" \"wait-on http://localhost:3000 && cross-env ELECTRON_DEV=true electron .\"",
-    "electron-build": "npm run compile:main && npm run react-build && electron-builder",
+    "electron-dev": "node dev-start.js",
+    "electron-build": "npm run clean && npm run compile:main && npm run react-build && electron-builder --publish never",
     "build": "npm run react-build",
     "start": "npm run electron-dev",
-    "extract:vinted:firefox": "ts-node src/cli/vinted-firefox.ts"
+    "extract:vinted:firefox": "ts-node src/cli/vinted-firefox.ts",
+    "clean": "node -e \"for (const d of ['dist','build','dist-app']) require('fs').rmSync(d,{recursive:true,force:true})\"",
+    "dist": "npm run electron-build",
+    "dist:win": "npm run electron-build -- --win -c.electronDist=node_modules/electron/dist",
+    "dist:mac": "npm run electron-build -- --mac"
   },
   "dependencies": {
-    "dotenv": "^16.4.5",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "sql.js": "^1.10.3"
+    "sql.js": "^1.14.1",
+    "tar": "^7.1.1"
   },
   "devDependencies": {
+    "@craco/craco": "^7.1.0",
+    "@radix-ui/react-alert-dialog": "^1.1.19",
+    "@radix-ui/react-dialog": "^1.1.19",
+    "@radix-ui/react-label": "^2.1.11",
+    "@radix-ui/react-primitive": "^2.1.7",
+    "@radix-ui/react-slot": "^1.3.0",
+    "@tailwindcss/postcss": "^4.3.1",
+    "@types/archiver": "^8.0.0",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20.14.2",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
+    "@types/sql.js": "^1.4.11",
+    "@types/sqlite3": "^3.1.8",
+    "@types/tar": "^6.1.13",
+    "archiver": "^6.0.2",
+    "autoprefixer": "^10.5.2",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
     "concurrently": "^8.2.2",
     "cross-env": "^7.0.3",
-    "electron": "^31.3.0",
-    "electron-builder": "^25.1.1",
+    "dotenv": "^16.4.5",
+    "electron": "^44.4.5",
+    "electron-builder": "^26.15.3",
     "electron-is-dev": "^2.0.0",
+    "lucide-react": "^1.24.0",
+    "postcss": "^8.5.15",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "react-scripts": "5.0.1",
+    "sqlite3": "^5.1.7",
+    "tailwind-merge": "^3.6.0",
+    "tailwindcss": "^4.3.1",
     "ts-node": "^10.9.2",
     "typescript": "^4.9.5",
     "wait-on": "^7.2.0"
@@ -51,26 +80,82 @@
     ]
   },
   "build": {
-    "appId": "com.vinted.authenticator",
-    "productName": "Vinted Authenticator",
+    "appId": "com.vinbot.authenticator",
+    "productName": "Vinbot Authenticator",
+    "copyright": "Copyright © 2026 Vinbot",
+    "extends": null,
+    "asar": true,
     "files": [
-      "dist/**/*",
-      "node_modules/**/*",
-      "public/**/*"
+      "public/electron.js",
+      "public/preload.js",
+      "public/favicon.png",
+      "build/**/*",
+      "!build/electron.js",
+      "!build/preload.js",
+      "!build/**/*.map",
+      "dist/**/*.js",
+      "!dist/**/*.map",
+      "package.json"
     ],
     "directories": {
-      "buildResources": "public",
+      "buildResources": "build-resources",
       "output": "dist-app"
     },
     "win": {
       "target": [
-        "nsis",
-        "portable"
-      ]
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "public/favicon.png"
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Vinbot Authenticator",
+      "artifactName": "Vinbot-Authenticator-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "Vinbot-Authenticator-Portable-${version}.${ext}"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "icon": "public/favicon.png",
+      "category": "public.app-category.productivity",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build-resources/entitlements.mac.plist",
+      "entitlementsInherit": "build-resources/entitlements.mac.plist",
+      "minimumSystemVersion": "12.0",
+      "extendInfo": {
+        "NSAppleEventsUsageDescription": "Vinbot Authenticator asks the Firefox login window it opened to quit, so your session is saved."
+      },
+      "artifactName": "Vinbot-Authenticator-${version}-mac.${ext}"
     }
   }
 }

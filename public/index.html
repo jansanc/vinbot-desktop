@@ -2,13 +2,22 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <!-- The page loads nothing but its own files and talks to the API only
+         through main (see preload.js). ws://localhost:3002 is the dev
+         server's live reload; there is nothing listening there in a build. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' ws://localhost:3002; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#667eea" />
     <meta
       name="description"
-      content="Desktop app to extract and manage Vinted session authentication"
+      content="Vinbot desktop for session authentication"
     />
-    <title>Vinted Session Authenticator</title>
+    <title>Vinbot Authenticator</title>
+    <link rel="icon" type="image/png" href="%PUBLIC_URL%/favicon.png" />
+    <link rel="stylesheet" href="%PUBLIC_URL%/output.css" />
   </head>
   <body>
     <div id="root"></div>

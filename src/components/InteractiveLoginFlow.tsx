@@ -53,16 +53,18 @@ function formatSize(bytes: number): string {
   return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/** macOS: closing Firefox's window doesn't quit it; main watches for that, but ⌘Q is the sure way. */
+const isMac = typeof navigator !== "undefined" && /Mac/i.test(navigator.userAgent);
+const closeFirefoxHint = isMac ? "close its window or quit Firefox (⌘Q)" : "close it";
+
 /** "login": open a fresh Firefox to log in. "import": reuse the user's own Firefox session. */
 type Mode = "login" | "import";
 
 interface InteractiveLoginFlowProps {
-  accessToken?: string;
   userId?: string;
 }
 
 export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
-  accessToken: initialAccessToken = "",
   userId: initialUserId = "",
 }) => {
   const { addError } = useError();
@@ -72,7 +74,6 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
   const [userEmail, setUserEmail] = useState(initialUserId);
   const [vintedEmail, setVintedEmail] = useState("");
   const [vintedMemberId, setVintedMemberId] = useState("");
-  const [accessToken, setAccessToken] = useState(initialAccessToken);
   const [isLoading, setIsLoading] = useState(false);
   const [progress, setProgress] = useState<LoginProgress[]>([]);
   const [result, setResult] = useState<any>(null);
@@ -225,14 +226,8 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
         throw new Error("Electron API not available");
       }
 
-      // Validate and refresh token if needed
-      let currentToken = accessToken.trim();
-      if (!currentToken) {
-        throw new Error("Session error: Your session may have expired. Please log in again.");
-      }
-
-      console.log("[InteractiveLoginFlow] Using access token for login");
-
+      // No token here: main uploads with the session it holds, and reports an
+      // expired one back through interactive-login-error / auth:unauthorized.
       // Auto-generate profile name if not provided
       const finalProfileName = profileName.trim() || `vinted_${Date.now()}`;
 
@@ -249,7 +244,6 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
               userEmail: userEmail.trim(),
               vintedEmail: vintedEmail.trim(),
               vintedMemberId: vintedMemberId.trim() || undefined,
-              accessToken: currentToken,
               uploadToS3: true,
             })
           : await electronAPI.interactiveLogin({
@@ -259,7 +253,6 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
               userEmail: userEmail.trim(),
               vintedEmail: vintedEmail.trim(),
               vintedMemberId: vintedMemberId.trim() || undefined,
-              accessToken: currentToken,
               uploadToS3: true,
             });
 
@@ -300,7 +293,9 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
       "START": "Starting login process...",
       "IMPORT_START": "Reading your Firefox session...",
       "BROWSER_LAUNCH": "Opening browser...",
-      "WAITING_FOR_LOGIN": "Waiting for you to log in (close browser when done)...",
+      "WAITING_FOR_LOGIN": isMac
+        ? "Waiting for you to log in (close the window or quit Firefox with ⌘Q when done)..."
+        : "Waiting for you to log in (close browser when done)...",
       "EXTRACT_COMPLETE": "Session saved successfully!",
       "COMPRESS_START": "Saving your session...",
       "UPLOAD_START": "Uploading to cloud...",
@@ -325,7 +320,7 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
           <p className="text-base md:text-lg dark:text-gray-400 text-gray-700 ml-11">
             {mode === "import"
               ? "Already logged in to Vinted in Firefox? We'll reuse that session, so there's no need to log in again."
-              : "We'll open Firefox for you to log in. Just close it when done, and your session will be saved automatically."}
+              : `We'll open Firefox for you to log in. Just ${closeFirefoxHint} when done, and your session will be saved automatically.`}
           </p>
         </div>
 
@@ -535,7 +530,7 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
                         max="60"
                       />
                       <p className="text-xs text-gray-600 dark:text-gray-500">
-                        How long to wait for you to close the browser
+                        {isMac ? "How long to wait for you to close or quit Firefox" : "How long to wait for you to close the browser"}
                       </p>
                     </div>
                     )}

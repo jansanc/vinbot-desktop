@@ -19,6 +19,21 @@ export type IpcResult<T> =
  * ..."), which would destroy the UnauthorizedError signal the renderer keys
  * off. Results are returned as a plain envelope instead.
  */
+/**
+ * What the renderer gets of a session: when it expires, never the tokens. Main
+ * keeps them (encrypted, see token-store) and uses them itself for every call,
+ * so a compromised or buggy page has nothing to leak or persist in the clear.
+ */
+export function redactSession<S extends { expiresIn: number; expiresAt: number }>(session: S) {
+  return { expiresIn: session.expiresIn, expiresAt: session.expiresAt };
+}
+
+function withoutTokens<R extends { data?: { session?: any } }>(response: R): R {
+  const session = response.data?.session;
+  if (!session) return response;
+  return { ...response, data: { ...response.data, session: redactSession(session) } };
+}
+
 async function run<T>(operation: () => Promise<T>): Promise<IpcResult<T>> {
   try {
     return { ok: true, data: await operation() };
@@ -44,7 +59,7 @@ export function registerAuthHandlers(): void {
         tokenStore.set(session);
       }
 
-      return response;
+      return withoutTokens(response);
     })
   );
 
@@ -66,7 +81,7 @@ export function registerAuthHandlers(): void {
         tokenStore.set(session);
       }
 
-      return response;
+      return withoutTokens(response);
     })
   );
 
@@ -83,29 +98,6 @@ export function registerAuthHandlers(): void {
 
       return { success: true };
     })
-  );
-
-  ipcMain.handle(
-    "api:storeDesktopSession",
-    async (
-      _event,
-      payload: {
-        accessToken?: string;
-        vintedEmail: string;
-        browserFingerprint: Record<string, any>;
-        sessionData: Array<Record<string, any>>;
-        sessionOrigins: Array<Record<string, any>>;
-        vintedMemberId?: string;
-        updateSessionOnly?: boolean;
-      }
-    ) =>
-      run(() => {
-        const { accessToken, ...body } = payload;
-        return ApiService.storeDesktopSession(
-          tokenStore.resolveAccessToken(accessToken),
-          body
-        );
-      })
   );
 
   // Lets the renderer restore a session on launch without holding the tokens

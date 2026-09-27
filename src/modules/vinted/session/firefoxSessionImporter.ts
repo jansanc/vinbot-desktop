@@ -86,8 +86,16 @@ function loadSqlJs(): Promise<SqlJsStatic> {
   return sqlJs!;
 }
 
+/** The folder holding profiles.ini and Profiles/. */
 function firefoxRoot(): string {
-  return path.join(process.env.APPDATA || "", "Mozilla", "Firefox");
+  switch (process.platform) {
+    case "win32":
+      return path.join(process.env.APPDATA || "", "Mozilla", "Firefox");
+    case "darwin":
+      return path.join(os.homedir(), "Library", "Application Support", "Firefox");
+    default:
+      return path.join(os.homedir(), ".mozilla", "firefox");
+  }
 }
 
 // ============================================================================

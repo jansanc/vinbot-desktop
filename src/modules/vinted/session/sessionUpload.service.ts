@@ -1,9 +1,30 @@
 import { config } from "../../../config/config";
-import type { ExtractedSession } from "./sessionExtractor";
 
-export interface SupabaseConfig {
+export interface SessionCookie {
+  name: string;
+  value: string;
+  domain: string;
+  path: string;
+  secure: boolean;
+  httpOnly?: boolean;
+  expires?: number;
+  sameSite?: "Strict" | "Lax" | "None";
+}
+
+export interface SessionStorage {
+  localStorage: Record<string, string>;
+  sessionStorage: Record<string, string>;
+}
+
+/** A captured Vinted session, as sent to the link endpoint. */
+export interface ExtractedSession {
+  profile_name: string;
+  profile_path: string;
   url: string;
-  anonKey: string;
+  cookies: SessionCookie[];
+  storage: SessionStorage;
+  user_agent?: string;
+  extracted_at: number;
 }
 
 export interface SessionUploadOptions {
@@ -310,59 +331,6 @@ export class SessionUploadService {
         healthy: false,
         profileValid: false,
         message: `Health check error: ${message}`,
-      };
-    }
-  }
-
-  /**
-   * Upload session to Supabase directly
-   * @deprecated Use linkVintedAccount instead for consolidated flow
-   */
-  static async uploadToSupabase(
-    session: ExtractedSession,
-    supabaseConfig: SupabaseConfig,
-    options: SessionUploadOptions
-  ): Promise<{ success: boolean; message: string }> {
-    try {
-      const sessionRecord = {
-        vinted_email: options.vintedEmail,
-        vinted_member_id: options.vintedMemberId,
-        user_email: options.userEmail,
-        cookies: JSON.stringify(session.cookies),
-        profile_name: session.profile_name,
-        extracted_at: new Date(session.extracted_at).toISOString(),
-      };
-
-      const response = await fetch(
-        `${supabaseConfig.url}/rest/v1/vinted_sessions`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            apikey: supabaseConfig.anonKey,
-            Authorization: `Bearer ${supabaseConfig.anonKey}`,
-          },
-          body: JSON.stringify(sessionRecord),
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(
-          errorData.message || `Supabase upload failed with status ${response.status}`
-        );
-      }
-
-      return {
-        success: true,
-        message: "Session uploaded to Supabase successfully",
-      };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error("[SessionUploadService] Supabase upload failed:", message);
-      return {
-        success: false,
-        message: `Supabase upload failed: ${message}`,
       };
     }
   }

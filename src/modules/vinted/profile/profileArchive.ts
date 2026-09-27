@@ -69,6 +69,46 @@ const EXCLUDED_FILES = new Set(
 );
 
 /**
+ * The user's private data, which must never leave the machine: none of it is
+ * needed for a Vinted session. Firefox's logins.json + key4.db decrypt every
+ * saved password offline (unless a primary password is set); Chrome's
+ * "Login Data" / "Web Data" hold saved passwords, autofill and cards. History,
+ * bookmarks and form history go too. Matched with their SQLite side files
+ * ("-journal", "-wal", "-shm") - see isSensitiveFile.
+ */
+const SENSITIVE_FILES = new Set(
+  [
+    // Firefox
+    "logins.json",
+    "logins-backup.json",
+    "key4.db",
+    "key3.db",
+    "signons.sqlite",
+    "formhistory.sqlite",
+    "places.sqlite",
+    "favicons.sqlite",
+    "autofill-profiles.json",
+    // Chrome / Edge
+    "login data",
+    "login data for account",
+    "web data",
+    "history",
+    "top sites",
+    "visited links",
+    "shortcuts",
+    "bookmarks",
+    "bookmarks.bak",
+    "favicons",
+    "network action predictor",
+    "affiliation database",
+  ].map((f) => f.toLowerCase()),
+);
+
+function isSensitiveFile(name: string): boolean {
+  return SENSITIVE_FILES.has(name.replace(/-(journal|wal|shm)$/, ""));
+}
+
+/**
  * tar's `filter`: true keeps the entry. Excluding a directory here also
  * excludes everything under it, since tar tests each entry it walks into.
  */
@@ -80,6 +120,7 @@ export function includeInProfileArchive(entryPath: string): boolean {
     const name = segment.toLowerCase();
     if (EXCLUDED_DIRS.has(name)) return false;
     if (EXCLUDED_FILES.has(name)) return false;
+    if (isSensitiveFile(name)) return false;
   }
 
   return true;

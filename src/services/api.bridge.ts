@@ -1,5 +1,5 @@
 import { config } from "../config/config";
-import type { LoginCredentials, LoginResponse, DesktopSessionResponse } from "./api.service";
+import type { LoginCredentials, LoginResponse } from "./api.service";
 
 /**
  * Renderer-side stand-in for ApiService.
@@ -60,29 +60,17 @@ export class ApiBridge {
     return unwrap(await bridge().login(credentials));
   }
 
-  static async refreshToken(refreshToken: string): Promise<LoginResponse> {
+  // Tokens are optional throughout: main uses its stored session when none is
+  // given, and the renderer no longer holds any.
+  static async refreshToken(refreshToken?: string): Promise<LoginResponse> {
     return unwrap(await bridge().refresh(refreshToken));
   }
 
-  static async getCurrentUser(accessToken: string): Promise<any> {
+  static async getCurrentUser(accessToken?: string): Promise<any> {
     return unwrap(await bridge().me(accessToken));
   }
 
-  static async logout(accessToken: string): Promise<void> {
+  static async logout(accessToken?: string): Promise<void> {
     await unwrap(await bridge().logout(accessToken));
-  }
-
-  static async storeDesktopSession(
-    accessToken: string,
-    payload: {
-      vintedEmail: string;
-      browserFingerprint: Record<string, any>;
-      sessionData: Array<Record<string, any>>;
-      sessionOrigins: Array<Record<string, any>>;
-      vintedMemberId?: string;
-      updateSessionOnly?: boolean;
-    }
-  ): Promise<DesktopSessionResponse> {
-    return unwrap(await bridge().storeDesktopSession({ accessToken, ...payload }));
   }
 }

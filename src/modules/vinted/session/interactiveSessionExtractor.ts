@@ -1,6 +1,6 @@
 import path from "path";
 import os from "os";
-import { spawn, spawnSync, ChildProcess } from "child_process";
+import { execFile, spawn, spawnSync, ChildProcess } from "child_process";
 import { existsSync, mkdirSync, writeFileSync, rmSync, statSync, readFileSync } from "fs";
 import * as tar from "tar";
 import { archiveNamePart, includeInProfileArchive } from "../profile/profileArchive";
@@ -50,9 +50,38 @@ export interface VintedCookie {
  * just wide enough for Vinted's login form and the Google/Apple sign-in popups. */
 const LOGIN_WINDOW_SIZE = { width: 520, height: 720 };
 
+/** How often the macOS window watch checks whether the login window is still open. */
+const MAC_WINDOW_POLL_MS = 1000;
+
+/**
+ * JXA (osascript -l JavaScript): how many normal windows (layer 0) the process
+ * with pid argv[0] has. CGWindowListCopyWindowInfo gives owner pids and layers
+ * without the Screen Recording permission (only window titles need that).
+ * kCGWindowListOptionAll, not OnScreenOnly: a minimized window, or one on
+ * another Space, is still open.
+ */
+const MAC_WINDOW_COUNT_SCRIPT = `
+ObjC.import("CoreGraphics");
+function run(argv) {
+  const pid = Number(argv[0]);
+  const list = ObjC.deepUnwrap(ObjC.castRefToObject(
+    $.CGWindowListCopyWindowInfo($.kCGWindowListOptionAll, $.kCGNullWindowID)
+  )) || [];
+  return list.filter(w =>
+    w.kCGWindowOwnerPID === pid && w.kCGWindowLayer === 0 &&
+    w.kCGWindowBounds && w.kCGWindowBounds.Width > 100 && w.kCGWindowBounds.Height > 100
+  ).length;
+}`;
+
+/** JXA: ask the app with pid argv[0] to quit, exactly as ⌘Q would. */
+const MAC_QUIT_SCRIPT = `
+ObjC.import("AppKit");
+function run(argv) {
+  const app = $.NSRunningApplication.runningApplicationWithProcessIdentifier(Number(argv[0]));
+  return app.isNil() ? false : app.terminate;
+}`;
+
 export class InteractiveSessionExtractor {
-  private programFiles = process.env.ProgramFiles || "C:\\Program Files";
-  private programFilesX86 = process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)";
   private tempProfileDir: string | null = null;
 
   /**
@@ -60,10 +89,33 @@ export class InteractiveSessionExtractor {
    * Firefox; Chrome and Edge are never started by this app.
    */
   private findFirefoxPath(): string {
-    const paths = [
-      path.join(this.programFiles, "Mozilla Firefox", "firefox.exe"),
-      path.join(this.programFilesX86, "Mozilla Firefox", "firefox.exe"),
-    ];
+    const paths: string[] = [];
+    if (process.platform === "win32") {
+      const programFiles = process.env.ProgramFiles || "C:\\Program Files";
+      const programFilesX86 = process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)";
+      paths.push(
+        path.join(programFiles, "Mozilla Firefox", "firefox.exe"),
+        path.join(programFilesX86, "Mozilla Firefox", "firefox.exe"),
+        // Installed for the current user only
+        path.join(process.env.LOCALAPPDATA || "", "Mozilla Firefox", "firefox.exe")
+      );
+    } else if (process.platform === "darwin") {
+      // The binary inside the bundle, not `open -a Firefox`: that returns at
+      // once, and it's this process's exit that says the login is over.
+      const inBundle = (app: string) => path.join(app, "Contents", "MacOS", "firefox");
+      paths.push(
+        inBundle("/Applications/Firefox.app"),
+        inBundle(path.join(os.homedir(), "Applications", "Firefox.app"))
+      );
+      // Anywhere else Spotlight knows of (a renamed app, another folder)
+      const found = spawnSync("mdfind", ["kMDItemCFBundleIdentifier == 'org.mozilla.firefox'"], {
+        encoding: "utf8",
+        timeout: 5000,
+      });
+      for (const app of (found.stdout || "").split("\n").filter(Boolean)) paths.push(inBundle(app));
+    } else {
+      paths.push("/usr/bin/firefox", "/usr/local/bin/firefox", "/snap/bin/firefox");
+    }
 
     for (const p of paths) {
       if (existsSync(p)) {
@@ -71,7 +123,11 @@ export class InteractiveSessionExtractor {
       }
     }
 
-    throw new Error("Could not find Firefox. Please install Firefox and try again.");
+    throw new Error(
+      process.platform === "darwin"
+        ? "Could not find Firefox. Please install Firefox in your Applications folder and try again."
+        : "Could not find Firefox. Please install Firefox and try again."
+    );
   }
 
   /**
@@ -157,9 +213,10 @@ export class InteractiveSessionExtractor {
       sizemode: "normal",
     };
     if (workArea) {
-      // Centred. Firefox reads the size in logical pixels but the position in
-      // physical ones, hence the scale factor on screenX/screenY only.
-      const { scaleFactor } = workArea;
+      // Centred. On Windows Firefox reads the size in logical pixels but the
+      // position in physical ones, hence the scale factor on screenX/screenY
+      // only. macOS uses points (logical) for both.
+      const scaleFactor = process.platform === "win32" ? workArea.scaleFactor : 1;
       mainWindow.screenX = String(
         Math.round((workArea.x + Math.max(0, (workArea.width - width) / 2)) * scaleFactor)
       );
@@ -313,8 +370,16 @@ export class InteractiveSessionExtractor {
     // -wait-for-browser is needed on Windows because firefox.exe is a launcher
     // process: it starts the real browser process and exits within ~200ms.
     // Without it we'd treat that exit as the user closing the window, then
-    // delete the temp profile while Firefox is still starting up on it.
-    const args = ["-wait-for-browser", "-no-remote", "-new-instance", "-profile", profilePath, url];
+    // delete the temp profile while Firefox is still starting up on it. On
+    // macOS the binary inside Firefox.app is the browser itself.
+    const args = [
+      ...(process.platform === "win32" ? ["-wait-for-browser"] : []),
+      "-no-remote",
+      "-new-instance",
+      "-profile",
+      profilePath,
+      url,
+    ];
 
     console.log(`[InteractiveLogin] Launching Firefox with args:`, args);
 
@@ -322,6 +387,66 @@ export class InteractiveSessionExtractor {
       detached: true,
       stdio: "ignore",
     });
+  }
+
+  /** Run a JXA script with arguments: its output, or null if osascript failed. */
+  private runJxa(script: string, ...args: string[]): Promise<string | null> {
+    return new Promise((resolve) => {
+      execFile("osascript", ["-l", "JavaScript", "-e", script, ...args], { timeout: 5000 }, (err, stdout) =>
+        resolve(err ? null : String(stdout).trim())
+      );
+    });
+  }
+
+  /** Wait up to `ms` for the browser to exit; whether it did. */
+  private async waitForExit(hasExited: () => boolean, ms: number): Promise<boolean> {
+    const start = Date.now();
+    while (!hasExited() && Date.now() - start < ms) {
+      await new Promise(resolve => setTimeout(resolve, 250));
+    }
+    return hasExited();
+  }
+
+  /**
+   * On macOS closing Firefox's last window doesn't quit it: Firefox keeps
+   * running with only its menu bar, and the login would wait for an exit that
+   * never comes (then time out and throw the session away). So once the login
+   * window has been seen and is then gone, quit Firefox the way ⌘Q would -
+   * which is also what makes it write everything out to the profile.
+   *
+   * Anything unexpected (osascript failing, the window never showing up in the
+   * list) leaves it doing nothing: quitting with ⌘Q still ends the login.
+   */
+  private watchForClosedMacWindow(pid: number, hasExited: () => boolean): void {
+    let seenWindow = false;
+    let emptyPolls = 0;
+    let failures = 0;
+    (async () => {
+      while (!hasExited()) {
+        await new Promise(resolve => setTimeout(resolve, MAC_WINDOW_POLL_MS));
+        if (hasExited()) return;
+        const out = await this.runJxa(MAC_WINDOW_COUNT_SCRIPT, String(pid));
+        const count = out === null ? NaN : Number(out);
+        if (Number.isNaN(count)) {
+          if (++failures >= 5) {
+            console.warn(`[InteractiveLogin] Can't watch the login window (osascript: ${out}); waiting for Firefox to quit`);
+            return;
+          }
+          continue;
+        }
+        failures = 0;
+        if (count > 0) {
+          seenWindow = true;
+          emptyPolls = 0;
+          continue;
+        }
+        // Two empty polls in a row, so a window being replaced doesn't count.
+        if (!seenWindow || ++emptyPolls < 2) continue;
+        console.log(`[InteractiveLogin] Login window closed; quitting Firefox`);
+        await this.runJxa(MAC_QUIT_SCRIPT, String(pid));
+        return;
+      }
+    })();
   }
 
   /**
@@ -340,6 +465,12 @@ export class InteractiveSessionExtractor {
     const pid = browserProc.pid;
     if (!pid) return;
 
+    if (process.platform === "darwin") {
+      await this.runJxa(MAC_QUIT_SCRIPT, String(pid));
+      if (await this.waitForExit(hasExited, 10000)) return;
+      console.warn(`[InteractiveLogin] Firefox did not quit within 10s, forcing it`);
+    }
+
     if (process.platform === "win32") {
       // Close the window the way the user would. taskkill without /F doesn't
       // do this: Firefox's processes refuse it ("can only be terminated
@@ -352,11 +483,7 @@ export class InteractiveSessionExtractor {
       spawnSync("powershell", ["-NoProfile", "-NonInteractive", "-Command", script], { stdio: "ignore" });
 
       const graceMs = 10000;
-      const start = Date.now();
-      while (!hasExited() && Date.now() - start < graceMs) {
-        await new Promise(resolve => setTimeout(resolve, 250));
-      }
-      if (hasExited()) return;
+      if (await this.waitForExit(hasExited, graceMs)) return;
 
       console.warn(`[InteractiveLogin] Browser did not close within ${graceMs / 1000}s, forcing it`);
       const forced = spawnSync("taskkill", ["/pid", String(pid), "/T", "/F"], { stdio: "ignore" });
@@ -410,8 +537,12 @@ export class InteractiveSessionExtractor {
       const launchedProfileDir = this.tempProfileDir;
       const browserProc = this.launchFirefox(browserPath, launchedProfileDir, url);
 
-      // Wait for user to close browser or timeout
       let closed = false;
+      if (process.platform === "darwin" && browserProc.pid) {
+        this.watchForClosedMacWindow(browserProc.pid, () => closed);
+      }
+
+      // Wait for user to close browser or timeout
       let timedOut = false;
       const waitForClose = new Promise<void>((resolve) => {
         // Cleared when the user closes the window, so it doesn't sit armed

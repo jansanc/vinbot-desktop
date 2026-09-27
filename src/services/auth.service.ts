@@ -2,9 +2,12 @@ import { ApiBridge as ApiService } from "./api.bridge";
 import { config } from "../config/config";
 import { storage } from "../config/storage";
 
+/**
+ * The renderer's view of the session: only when it expires. The tokens stay in
+ * the main process (encrypted on disk via safeStorage) and main attaches them
+ * to every API call, so they are never in localStorage in the clear.
+ */
 export interface Session {
-  accessToken: string;
-  refreshToken: string;
   expiresIn: number;
   expiresAt: number;
 }
@@ -28,6 +31,17 @@ export interface AuthUser {
 }
 
 const STORAGE_KEYS = config.storage.keys;
+
+const NO_SUBSCRIPTION_MESSAGE =
+  "You cannot login because you don't have an active subscription. Please upgrade your account to continue.";
+
+/** The account has no plan that allows using the app. */
+export class SubscriptionError extends Error {
+  constructor(message = NO_SUBSCRIPTION_MESSAGE) {
+    super(message);
+    this.name = "SubscriptionError";
+  }
+}
 const VALID_SUBSCRIPTION_TIERS = ["basic", "pro", "enterprise"];
 
 export class AuthService {
@@ -66,91 +80,58 @@ export class AuthService {
     }
 
     const session = response.data.session;
-    const user = response.data.user;
 
-    if (!session?.accessToken) {
-      throw new Error("Server did not return access token");
+    if (!session?.expiresAt) {
+      throw new Error("Server did not return a session");
     }
 
-    console.log(`[Auth] Login response subscription tier: "${user.subscriptionTier}"`);
-
-    if (!this.isValidSubscriptionTier(user.subscriptionTier)) {
-      throw new Error(
-        `You cannot login because you don't have an active subscription. Please upgrade your account to continue.`
-      );
-    }
-
-    // Verify subscription tier with /auth/me endpoint - this is mandatory
-    console.log("[Auth] Verifying subscription tier with /auth/me endpoint...");
+    // /auth/me is the source of truth for the plan: the user saved (and shown
+    // in the header) is the one it returns, not the login response's copy.
+    let verifiedUser: AuthUser;
     try {
-      const meResponse = await ApiService.getCurrentUser(session.accessToken);
-
-      console.log("[Auth] Full /auth/me response:", {
-        status: meResponse.status,
-        message: meResponse.message,
-        hasData: !!meResponse.data,
-        dataKeys: meResponse.data ? Object.keys(meResponse.data) : [],
-      });
-
-      const meUser = meResponse.data?.user || meResponse.data;
-
-      if (!meUser) {
-        console.error("[Auth] /auth/me response structure:", JSON.stringify(meResponse, null, 2));
-        throw new Error("Failed to retrieve user data from /auth/me endpoint");
-      }
-
-      // Debug: Log subscription tier details
-      console.log("[Auth] /auth/me user data:", {
-        id: meUser.id,
-        email: meUser.email,
-        subscriptionTier: meUser.subscriptionTier,
-        subscriptionTierType: typeof meUser.subscriptionTier,
-        subscriptionTierLength: meUser.subscriptionTier?.length,
-        subscriptionTierCharCodes: meUser.subscriptionTier ? meUser.subscriptionTier.split('').map((c: string) => c.charCodeAt(0)) : [],
-      });
-
-      const tierToValidate = meUser.subscriptionTier;
-      console.log(`[Auth] Validating subscription tier: "${tierToValidate}"`);
-
-      if (!this.isValidSubscriptionTier(tierToValidate)) {
-        console.error(`[Auth] ❌ REJECTED: "${tierToValidate}" is not a valid subscription tier`);
-        throw new Error(
-          `You cannot login because you don't have an active subscription. Please upgrade your account to continue.`
-        );
-      }
-
-      console.log("[Auth] ✅ Subscription tier verified successfully");
+      verifiedUser = await AuthService.fetchCurrentUser();
     } catch (error) {
+      if (error instanceof SubscriptionError) throw error;
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error("[Auth] Subscription tier verification failed:", errorMessage);
-      throw new Error(
-        errorMessage.includes("active subscription") || errorMessage.includes("don't have")
-          ? errorMessage
-          : `Failed to verify account access. ${errorMessage}`
-      );
+      throw new Error(`Failed to verify account access. ${errorMessage}`);
     }
 
-    // Store in localStorage
     AuthService.saveSession(session);
-    AuthService.saveUser(user);
+    console.log("Session saved successfully:", { expiresAt: session.expiresAt });
 
-    // Verify session was saved
-    const savedSession = AuthService.getSession();
-    if (!savedSession?.accessToken) {
-      throw new Error("Failed to save session token");
+    return { user: verifiedUser, session };
+  }
+
+  /**
+   * The current user, plan included, straight from /auth/me, saved over the
+   * cached copy. The plan changes on the server (upgrades, downgrades,
+   * cancellations) while a session lives on for weeks through refreshes, and
+   * the refresh response carries no user, so the cache alone went stale: an
+   * account upgraded to Enterprise kept showing the plan it logged in with.
+   * Throws SubscriptionError when the plan doesn't allow using the app.
+   */
+  static async fetchCurrentUser(): Promise<AuthUser> {
+    const meResponse = await ApiService.getCurrentUser();
+    const meUser: AuthUser | undefined = meResponse?.data?.user || meResponse?.data;
+    if (!meUser?.id) {
+      throw new Error("Failed to retrieve user data from /auth/me endpoint");
     }
 
-    console.log("Session saved successfully:", {
-      hasAccessToken: !!savedSession.accessToken,
-      expiresAt: savedSession.expiresAt,
-    });
+    console.log(`[Auth] /auth/me subscription tier: "${meUser.subscriptionTier}"`);
+    if (!AuthService.isValidSubscriptionTier(meUser.subscriptionTier)) {
+      throw new SubscriptionError();
+    }
 
-    return { user, session };
+    AuthService.saveUser(meUser);
+    return meUser;
   }
 
   static saveSession(session: Session): void {
     try {
-      storage.setItem(STORAGE_KEYS.session, JSON.stringify(session));
+      // Only the expiry, whatever the caller passed.
+      const { expiresIn, expiresAt } = session;
+      storage.setItem(STORAGE_KEYS.session, JSON.stringify({ expiresIn, expiresAt }));
     } catch (error) {
       console.error("Failed to save session:", error);
     }
@@ -167,7 +148,13 @@ export class AuthService {
   static getSession(): Session | null {
     try {
       const stored = storage.getItem(STORAGE_KEYS.session);
-      return stored ? JSON.parse(stored) : null;
+      if (!stored) return null;
+      const session = JSON.parse(stored);
+      // Sessions saved by older versions carried the tokens; drop them.
+      if ("accessToken" in session || "refreshToken" in session) {
+        AuthService.saveSession(session);
+      }
+      return { expiresIn: session.expiresIn, expiresAt: session.expiresAt };
     } catch {
       return null;
     }
@@ -179,6 +166,20 @@ export class AuthService {
       return stored ? JSON.parse(stored) : null;
     } catch {
       return null;
+    }
+  }
+
+  /**
+   * Main holds the tokens. Without them (logged out elsewhere, or no
+   * safeStorage backend to keep them across a restart) the renderer's copy of
+   * the session is worthless.
+   */
+  static async hasMainSession(): Promise<boolean> {
+    try {
+      const result = await window.electronAPI.auth.getStoredSession();
+      return result.ok && !!result.data?.hasSession;
+    } catch {
+      return false;
     }
   }
 
@@ -211,7 +212,7 @@ export class AuthService {
     const session = this.getSession();
     if (session) {
       try {
-        await ApiService.logout(session.accessToken);
+        await ApiService.logout();
       } catch (error) {
         console.error("Failed to logout from API:", error);
       }
@@ -234,7 +235,7 @@ export class AuthService {
     if (!session) return null;
 
     try {
-      const response = await ApiService.refreshToken(session.refreshToken);
+      const response = await ApiService.refreshToken();
 
       if (response.status !== "success") {
         this.clearSession();

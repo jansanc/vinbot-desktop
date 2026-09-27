@@ -2,7 +2,7 @@ import path from "path";
 import os from "os";
 import { existsSync, readdirSync, readFileSync, copyFileSync, openSync, readSync, closeSync } from "fs";
 import { mkdtempSync, rmSync } from "fs";
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import type {
   Fingerprint,
   ExtractionData,
@@ -24,7 +24,7 @@ function closeProcessIfRunning(exeName: string): boolean {
   try {
     if (process.platform === "win32") {
       console.log(`[CloseProcess] Attempting to close ${exeName}...`);
-      execSync(`taskkill /IM ${exeName} /F`, { stdio: "pipe", windowsHide: true });
+      execFileSync("taskkill", ["/IM", exeName, "/F"], { stdio: "pipe", windowsHide: true });
       console.log(`[CloseProcess] Successfully closed ${exeName}`);
       return true;
     }
@@ -107,12 +107,20 @@ function copyFileSafe(src: string, dest: string): void {
   // On Windows, try PowerShell Copy-Item (handles locked files better)
   if (process.platform === "win32") {
     try {
-      // Use PowerShell to copy the file, which can handle locked files better
-      const escapedSrc = src.replace(/"/g, '`"');
-      const escapedDest = dest.replace(/"/g, '`"');
-      execSync(
-        `powershell -NoProfile -Command "Copy-Item -Path \\"${escapedSrc}\\" -Destination \\"${escapedDest}\\" -Force"`,
+      // Use PowerShell to copy the file, which can handle locked files better.
+      // The paths go in through the environment, never into the command
+      // text: inside a PowerShell string "$(...)" runs code, and part of the
+      // path is a profile name the renderer chose.
+      execFileSync(
+        "powershell",
+        [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          "Copy-Item -LiteralPath $env:VINBOT_COPY_SRC -Destination $env:VINBOT_COPY_DEST -Force",
+        ],
         {
+          env: { ...process.env, VINBOT_COPY_SRC: src, VINBOT_COPY_DEST: dest },
           stdio: "pipe",
           windowsHide: true,
           timeout: 5000,
@@ -517,7 +525,7 @@ export function extractChromeCookies(
           if (process.platform === "win32") {
             try {
               const exeName = browserType === "edge" ? "msedge.exe" : "chrome.exe";
-              execSync(`tasklist /FI "IMAGENAME eq ${exeName}" /NH`, { stdio: "pipe" });
+              execFileSync("tasklist", ["/FI", `IMAGENAME eq ${exeName}`, "/NH"], { stdio: "pipe", windowsHide: true });
               isRunning = true;
             } catch {
               isRunning = false;

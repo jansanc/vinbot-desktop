@@ -75,10 +75,13 @@ let mainWindow;
 const createWindow = () => {
   console.log("[Electron] Creating window...");
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
-    minWidth: 900,
-    minHeight: 600,
+    // A fixed, compact window: every screen fits it (a longer one scrolls),
+    // so it can't be resized, maximized or made full screen
+    width: 900,
+    height: 600,
+    resizable: false,
+    maximizable: false,
+    fullscreenable: false,
     icon: path.join(__dirname, "favicon.png"),
     webPreferences: {
       nodeIntegration: false,
@@ -95,6 +98,10 @@ const createWindow = () => {
   if (isDev) {
     mainWindow.webContents.openDevTools();
   }
+
+  // maximizable: false hides the button, but Windows still honours a maximize
+  // sent another way (a keyboard snap, another program): undo it
+  mainWindow.on("maximize", () => mainWindow.unmaximize());
 
   mainWindow.on("closed", () => {
     mainWindow = null;

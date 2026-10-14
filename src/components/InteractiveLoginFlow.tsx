@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { AlertCircle, CheckCircle, Loader, Lock, Mail, ChevronDown, LogIn, Import, RefreshCw } from "lucide-react";
+import { AlertCircle, CheckCircle2, Loader2, ChevronDown, LogIn, Import, RefreshCw } from "lucide-react";
 import { Button } from "./ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import { Label } from "./ui/label";
@@ -305,19 +305,12 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br dark:from-slate-900 dark:to-slate-800 from-gray-50 to-gray-100 p-4 md:p-8">
-      <div className="max-w-3xl mx-auto">
-        {/* Header */}
+    <div className="mx-auto w-full max-w-2xl px-6 py-10">
+      <div className="animate-fade-in">
+        {/* Header, set like the web app's page titles */}
         <div className="mb-8">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30">
-              <Lock className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-            </div>
-            <h1 className="text-3xl md:text-4xl font-bold dark:text-white text-gray-900">
-              Save Your Session
-            </h1>
-          </div>
-          <p className="text-base md:text-lg dark:text-gray-400 text-gray-700 ml-11">
+          <h1 className="display text-[28px]">Connect your Vinted account</h1>
+          <p className="mt-2 max-w-xl text-[15px] leading-relaxed text-pretty text-muted-foreground">
             {mode === "import"
               ? "Already logged in to Vinted in Firefox? We'll reuse that session, so there's no need to log in again."
               : `We'll open Firefox for you to log in. Just ${closeFirefoxHint} when done, and your session will be saved automatically.`}
@@ -328,9 +321,9 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
         {!result ? (
           <Card>
             <CardHeader>
-              <CardTitle>Login Setup</CardTitle>
+              <CardTitle>Session</CardTitle>
               <CardDescription>
-                Configure your Vinted email and optional settings to get started
+                Choose how to get your Vinted session, then enter the email of that Vinted account.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -338,7 +331,7 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
               <div
                 role="radiogroup"
                 aria-label="How to get your Vinted session"
-                className="grid grid-cols-2 gap-1 rounded-lg bg-gray-100 p-1 dark:bg-slate-900/50"
+                className="grid grid-cols-2 gap-1 rounded-lg border border-border bg-muted p-1"
               >
                 {([
                   { value: "login", label: "Log in with Firefox", Icon: LogIn },
@@ -351,10 +344,11 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
                     aria-checked={mode === value}
                     onClick={() => chooseMode(value)}
                     disabled={isLoading}
-                    className={`flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
+                    className={`flex h-8 items-center justify-center gap-2 rounded-md px-3 text-[13px] font-medium transition-[background-color,color,box-shadow] duration-150 disabled:opacity-50 ${
                       mode === value
-                        ? "bg-white text-gray-900 shadow-sm dark:bg-slate-700 dark:text-white"
-                        : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
+                        ? // In dark the card is darker than the track; the accent surface sits above it
+                          "bg-card text-foreground shadow-[var(--highlight),var(--shadow-xs)] dark:bg-accent"
+                        : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
                     <Icon className="h-4 w-4 shrink-0" />
@@ -390,7 +384,7 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
                   </div>
 
                   {firefoxProfiles.length === 0 ? (
-                    <p className="rounded-lg border border-dashed border-gray-300 p-4 text-sm text-gray-600 dark:border-slate-700 dark:text-gray-400">
+                    <p className="rounded-lg border border-dashed border-input/60 p-4 text-sm text-muted-foreground">
                       {isScanning ? "Looking for Firefox profiles..." : "No Firefox profiles found on this computer."}
                     </p>
                   ) : (
@@ -406,31 +400,33 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
                             aria-checked={selected}
                             disabled={!usable || isLoading}
                             onClick={() => setSelectedChoiceKey(key)}
-                            className={`flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors disabled:cursor-not-allowed ${
+                            className={`flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-[background-color,border-color] duration-150 disabled:cursor-not-allowed ${
                               selected
-                                ? "border-blue-500 bg-blue-50 dark:border-blue-500 dark:bg-blue-950/30"
-                                : "border-gray-200 hover:border-gray-300 dark:border-slate-700 dark:hover:border-slate-600"
+                                ? "border-primary/60 bg-primary/8"
+                                : "border-border bg-card hover:border-input/60 hover:bg-accent/60"
                             } ${usable ? "" : "opacity-60"}`}
                           >
                             <span
-                              className={`mt-1 h-3.5 w-3.5 shrink-0 rounded-full border-2 ${
-                                selected ? "border-blue-600 bg-blue-600" : "border-gray-400 dark:border-slate-500"
+                              className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
+                                selected ? "border-primary" : "border-input"
                               }`}
-                            />
+                            >
+                              {selected && <span className="h-2 w-2 rounded-full bg-primary" />}
+                            </span>
                             <span className="min-w-0 flex-1">
                               <span className="flex flex-wrap items-center gap-2">
-                                <span className="truncate font-medium text-gray-900 dark:text-white">
+                                <span className="truncate text-sm font-medium text-foreground">
                                   {profile.name}
                                 </span>
                                 {profile.isDefault && (
-                                  <span className="rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-gray-700 dark:bg-slate-700 dark:text-gray-300">
+                                  <span className="rounded-full border border-border bg-secondary px-2 py-px text-[11px] font-medium text-muted-foreground">
                                     Default
                                   </span>
                                 )}
                               </span>
                               <span
                                 className={`mt-0.5 block text-xs ${
-                                  usable ? "text-green-700 dark:text-green-400" : "text-gray-600 dark:text-gray-500"
+                                  usable ? "text-success" : "text-muted-foreground"
                                 }`}
                               >
                                 {profile.error
@@ -450,7 +446,7 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
                     </div>
                   )}
 
-                  <p className="text-xs dark:text-gray-500 text-gray-600">
+                  <p className="text-xs leading-relaxed text-muted-foreground">
                     Only your Vinted cookies are copied — nothing else from your browser. Firefox can stay open.
                     Not logged in? Open Vinted in Firefox, log in, then press Refresh.
                   </p>
@@ -458,32 +454,28 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
               )}
 
               {/* Email Input - Main Required Field */}
-              <div className="space-y-2">
-                <Label htmlFor="email" className="flex items-center gap-2">
-                  <Mail className="w-4 h-4" />
-                  <span>Your Vinted Email</span>
-                </Label>
+              <div className="grid gap-1.5">
+                <Label htmlFor="email">Vinted email</Label>
                 <Input
                   id="email"
                   type="email"
                   value={vintedEmail}
                   onChange={(e) => setVintedEmail(e.target.value)}
                   disabled={isLoading}
-                  placeholder="your@vinted.email"
-                  className="text-base"
+                  placeholder="you@example.com"
                 />
-                <p className="text-xs dark:text-gray-500 text-gray-600">
-                  Used to organize your session in our system.
+                <p className="text-xs text-muted-foreground">
+                  The email of the Vinted account this session belongs to.
                 </p>
               </div>
 
               {/* Progress Display */}
               {progress.length > 0 && (
-                <div className="space-y-3">
-                  <div className="flex items-start gap-3 p-4 rounded-lg bg-blue-50 dark:bg-slate-900/50 border border-blue-200 dark:border-blue-900">
-                    <Loader className="w-5 h-5 text-blue-600 dark:text-blue-400 animate-spin shrink-0 mt-0.5" />
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-blue-900 dark:text-blue-300">
+                <div role="status">
+                  <div className="flex items-start gap-3 rounded-lg border border-primary/25 bg-primary/8 p-3.5">
+                    <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-primary" aria-hidden />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-foreground">
                         {progress[progress.length - 1] && getFriendlyMessage(
                           progress[progress.length - 1].step,
                           progress[progress.length - 1].message
@@ -491,8 +483,8 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
                       </p>
                       <div className="mt-2 space-y-1">
                         {progress.slice(0, -1).map((entry, idx) => (
-                          <div key={idx} className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
-                            <CheckCircle className="w-3.5 h-3.5 text-green-600 dark:text-green-400 shrink-0" />
+                          <div key={idx} className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-success" aria-hidden />
                             <span>{getFriendlyMessage(entry.step, entry.message)}</span>
                           </div>
                         ))}
@@ -503,23 +495,26 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
               )}
 
               {/* Advanced Options */}
-              <div className="border-t border-gray-200 dark:border-slate-700 pt-4">
+              <div className="border-t border-border pt-4">
                 <button
+                  type="button"
+                  aria-expanded={showAdvanced}
                   onClick={() => setShowAdvanced(!showAdvanced)}
-                  className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
+                  className="flex items-center gap-1.5 rounded-sm text-[13px] font-medium text-muted-foreground transition-colors hover:text-foreground"
                 >
                   <ChevronDown
-                    className={`w-4 h-4 transition-transform ${showAdvanced ? "rotate-180" : ""}`}
+                    className={`h-4 w-4 transition-transform duration-150 ${showAdvanced ? "rotate-180" : ""}`}
+                    aria-hidden
                   />
-                  Advanced Options
+                  Advanced options
                 </button>
 
                 {showAdvanced && (
-                  <div className="mt-4 space-y-4 p-4 rounded-lg bg-gray-50 dark:bg-slate-900/30">
+                  <div className="mt-4 space-y-4 rounded-lg border border-border bg-muted/60 p-4">
                     {/* Timeout Input (only the login window waits) */}
                     {mode === "login" && (
-                    <div className="space-y-2">
-                      <Label htmlFor="timeout">Wait Time (minutes)</Label>
+                    <div className="grid gap-1.5">
+                      <Label htmlFor="timeout">Wait time (minutes)</Label>
                       <Input
                         id="timeout"
                         type="number"
@@ -529,15 +524,15 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
                         min="1"
                         max="60"
                       />
-                      <p className="text-xs text-gray-600 dark:text-gray-500">
+                      <p className="text-xs text-muted-foreground">
                         {isMac ? "How long to wait for you to close or quit Firefox" : "How long to wait for you to close the browser"}
                       </p>
                     </div>
                     )}
 
                     {/* Profile Name */}
-                    <div className="space-y-2">
-                      <Label htmlFor="profileName">Session Name (optional)</Label>
+                    <div className="grid gap-1.5">
+                      <Label htmlFor="profileName">Session name (optional)</Label>
                       <Input
                         id="profileName"
                         type="text"
@@ -553,7 +548,7 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
             </CardContent>
 
             {/* Footer with Button */}
-            <div className="px-6 py-4 border-t border-gray-200 dark:border-slate-700">
+            <CardFooter>
               <Button
                 onClick={handleStartLogin}
                 disabled={isLoading || !vintedEmail.trim() || (mode === "import" && !selectedChoice)}
@@ -562,41 +557,33 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
               >
                 {isLoading ? (
                   <>
-                    <Loader className="w-4 h-4 animate-spin" />
+                    <Loader2 className="animate-spin" aria-hidden />
                     <span>{mode === "import" ? "Importing..." : "Starting..."}</span>
                   </>
                 ) : mode === "import" ? (
-                  "Import Session"
+                  "Import session"
                 ) : (
-                  "Start Login"
+                  "Open Firefox and log in"
                 )}
               </Button>
-            </div>
+            </CardFooter>
           </Card>
         ) : (
           /* Success Message */
           <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <div className="mb-6 flex justify-center">
-                <div className="w-16 h-16 rounded-full bg-green-100 dark:bg-green-900/30 border border-green-200 dark:border-green-700 flex items-center justify-center">
-                  <CheckCircle className="w-8 h-8 text-green-600 dark:text-green-400" />
-                </div>
+            <CardContent className="flex flex-col items-center justify-center px-8 py-12 text-center">
+              <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-full border border-success/25 bg-success/10">
+                <CheckCircle2 className="h-6 w-6 text-success" aria-hidden />
               </div>
-              <h2 className="text-2xl font-bold dark:text-white text-gray-900 mb-2">
-                Session Saved Successfully!
-              </h2>
-              <p className="dark:text-gray-400 text-gray-700 mb-1 text-center max-w-sm">
-                Your Vinted session has been saved and uploaded to the cloud.
+              <h2 className="display text-[22px]">Session saved</h2>
+              <p className="mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">
+                Your Vinted session is saved and uploaded. Vinbot can now work with this account.
               </p>
-              <p className="text-sm dark:text-gray-500 text-gray-600 mb-6">
+              <p className="mt-1 text-xs text-muted-foreground" data-numeric>
                 Session size: {formatSize(result.profile_archive_size || 0)}
               </p>
-              <Button
-                onClick={handleReset}
-                variant="default"
-                size="lg"
-              >
-                Save Another Session
+              <Button onClick={handleReset} variant="outline" className="mt-6">
+                Save another session
               </Button>
             </CardContent>
           </Card>

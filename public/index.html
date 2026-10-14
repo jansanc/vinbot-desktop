@@ -10,7 +10,7 @@
       content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' ws://localhost:3002; object-src 'none'; base-uri 'none'; form-action 'none'"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#667eea" />
+    <meta name="theme-color" content="#0f1014" />
     <meta
       name="description"
       content="Vinbot desktop for session authentication"
@@ -20,6 +20,9 @@
     <link rel="stylesheet" href="%PUBLIC_URL%/output.css" />
   </head>
   <body>
+    <!-- Before React mounts: the saved theme (ThemeContext), so a light-theme
+         user never sees the dark default flash. -->
+    <script src="%PUBLIC_URL%/theme-init.js"></script>
     <div id="root"></div>
   </body>
 </html>

@@ -24,13 +24,15 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     applyTheme(theme);
   }, [theme]);
 
+  // As the web app: html.dark or html.light (input.css keys the palette and
+  // the dark: variant off them).
   const applyTheme = (newTheme: Theme) => {
     const html = document.documentElement;
-    if (newTheme === "dark") {
-      html.classList.add("dark");
-    } else {
-      html.classList.remove("dark");
-    }
+    html.classList.toggle("dark", newTheme === "dark");
+    html.classList.toggle("light", newTheme === "light");
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute("content", newTheme === "dark" ? "#0f1014" : "#f6f7f9");
     localStorage.setItem("theme", newTheme);
   };
 

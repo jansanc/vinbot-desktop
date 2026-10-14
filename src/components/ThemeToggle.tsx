@@ -1,23 +1,15 @@
-import React from "react";
+import { Moon, Sun } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
+import { Button } from "./ui/button";
 
-const ThemeToggle: React.FC<{ className?: string }> = ({ className = "" }) => {
+// As the web app's: a ghost icon button showing the theme it switches to.
+export default function ThemeToggle() {
   const { theme, toggleTheme } = useTheme();
+  const label = `Switch to ${theme === "dark" ? "light" : "dark"} mode`;
 
   return (
-    <button
-      onClick={toggleTheme}
-      className={`theme-toggle ${className}`}
-      aria-label={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
-      title={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
-    >
-      <div className="theme-toggle-icons">
-        <span className="sun-icon">☀️</span>
-        <span className="moon-icon">🌙</span>
-      </div>
-      <div className={`theme-toggle-slider ${theme}`} />
-    </button>
+    <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label={label} title={label}>
+      {theme === "dark" ? <Sun aria-hidden /> : <Moon aria-hidden />}
+    </Button>
   );
-};
-
-export default ThemeToggle;
+}

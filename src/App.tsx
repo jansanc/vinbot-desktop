@@ -247,13 +247,13 @@ function AppContent() {
   // Show interactive login if authenticated
   return (
     <>
-      <div className="flex min-h-screen flex-col bg-background">
+      <div className="flex min-h-screen flex-col bg-background text-foreground">
         <UserHeader
           user={user}
           onLogout={handleLogout}
           isLoggingOut={isLoggingOut}
         />
-        <main className="flex flex-1 flex-col items-center justify-center bg-muted/40 px-4">
+        <main className="flex flex-1 flex-col">
           <InteractiveLoginFlow userId={user?.id || ""} />
         </main>
       </div>

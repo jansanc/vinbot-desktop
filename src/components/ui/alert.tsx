@@ -2,14 +2,17 @@ import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
+// The web app's notice (IndNotice): a tint of the state's colour, never a
+// solid block; the text stays in the foreground colour.
 const alertVariants = cva(
-  "relative w-full rounded-lg border p-4 [&>svg~*]:pl-7 [&>svg+div]:translate-y-[-3px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-current",
+  "relative w-full rounded-lg border px-3.5 py-3 text-sm leading-relaxed text-foreground [&>svg~*]:pl-7 [&>svg]:absolute [&>svg]:left-3.5 [&>svg]:top-3.5 [&>svg]:size-4",
   {
     variants: {
       variant: {
-        default: "bg-white text-gray-950 dark:bg-slate-950 dark:text-slate-50",
-        destructive:
-          "border-red-500/50 bg-red-50 text-red-800 dark:border-red-500/50 dark:bg-red-900/20 dark:text-red-400 [&>svg]:text-red-600 dark:[&>svg]:text-red-400",
+        default: "border-border bg-muted [&>svg]:text-muted-foreground",
+        destructive: "border-destructive/25 bg-destructive/8 [&>svg]:text-destructive",
+        success: "border-success/25 bg-success/8 [&>svg]:text-success",
+        warning: "border-warning/25 bg-warning/8 [&>svg]:text-warning",
       },
     },
     defaultVariants: {
@@ -37,7 +40,7 @@ const AlertTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <h5
     ref={ref}
-    className={cn("mb-1 font-medium leading-none tracking-tight", className)}
+    className={cn("mb-0.5 font-medium leading-snug", className)}
     {...props}
   />
 ))
@@ -49,7 +52,7 @@ const AlertDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn("text-sm [&_p]:leading-relaxed", className)}
+    className={cn("text-sm text-muted-foreground [&_p]:leading-relaxed", className)}
     {...props}
   />
 ))

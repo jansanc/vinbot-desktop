@@ -1,13 +1,18 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
 
+// As the web app's: 12px corners, hairline border, the dark top highlight.
+
 const Card = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn("rounded-xl border border-gray-200 bg-white shadow dark:border-slate-700 dark:bg-slate-800", className)}
+    className={cn(
+      "rounded-xl border border-border bg-card text-card-foreground shadow-[var(--highlight),var(--shadow-xs)]",
+      className
+    )}
     {...props}
   />
 ))
@@ -19,7 +24,7 @@ const CardHeader = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn("flex flex-col space-y-1.5 p-6", className)}
+    className={cn("flex flex-col space-y-1 p-5", className)}
     {...props}
   />
 ))
@@ -31,7 +36,7 @@ const CardTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <h2
     ref={ref}
-    className={cn("text-2xl font-semibold leading-none tracking-tight dark:text-white", className)}
+    className={cn("text-[15px] font-semibold leading-snug tracking-[-0.01em]", className)}
     {...props}
   />
 ))
@@ -43,7 +48,7 @@ const CardDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <p
     ref={ref}
-    className={cn("text-sm text-gray-600 dark:text-gray-400", className)}
+    className={cn("text-sm text-muted-foreground", className)}
     {...props}
   />
 ))
@@ -53,7 +58,7 @@ const CardContent = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => (
-  <div ref={ref} className={cn("p-6 pt-0", className)} {...props} />
+  <div ref={ref} className={cn("p-5 pt-0", className)} {...props} />
 ))
 CardContent.displayName = "CardContent"
 
@@ -63,7 +68,7 @@ const CardFooter = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn("flex items-center p-6 pt-0", className)}
+    className={cn("flex items-center border-t border-border px-5 py-4", className)}
     {...props}
   />
 ))

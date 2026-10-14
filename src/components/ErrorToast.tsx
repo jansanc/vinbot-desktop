@@ -1,69 +1,50 @@
 import React from "react";
-import { AlertCircle, CheckCircle, AlertTriangle, Info, X } from "lucide-react";
+import { AlertCircle, AlertTriangle, Info, X } from "lucide-react";
 import { AppError } from "../utils/errorHandler";
+import { cn } from "@/lib/utils";
 
 interface ErrorToastProps {
   error: AppError;
   onDismiss: () => void;
 }
 
-export const ErrorToast: React.FC<ErrorToastProps> = ({ error, onDismiss }) => {
-  const getSeverityStyles = () => {
-    switch (error.severity) {
-      case "critical":
-      case "error":
-        return {
-          bg: "bg-red-50 dark:bg-red-900/20",
-          border: "border-red-200 dark:border-red-800",
-          text: "text-red-900 dark:text-red-300",
-          icon: "text-red-600 dark:text-red-400",
-          Icon: AlertCircle,
-        };
-      case "warning":
-        return {
-          bg: "bg-yellow-50 dark:bg-yellow-900/20",
-          border: "border-yellow-200 dark:border-yellow-800",
-          text: "text-yellow-900 dark:text-yellow-300",
-          icon: "text-yellow-600 dark:text-yellow-400",
-          Icon: AlertTriangle,
-        };
-      case "info":
-        return {
-          bg: "bg-blue-50 dark:bg-blue-900/20",
-          border: "border-blue-200 dark:border-blue-800",
-          text: "text-blue-900 dark:text-blue-300",
-          icon: "text-blue-600 dark:text-blue-400",
-          Icon: Info,
-        };
-      default:
-        return {
-          bg: "bg-gray-50 dark:bg-gray-900/20",
-          border: "border-gray-200 dark:border-gray-800",
-          text: "text-gray-900 dark:text-gray-300",
-          icon: "text-gray-600 dark:text-gray-400",
-          Icon: Info,
-        };
-    }
-  };
+// The web app's notices: a raised surface with the state's colour on the icon
+// and a hairline edge, the text in the foreground colour.
+const SEVERITY = {
+  error: { Icon: AlertCircle, tone: "text-destructive", edge: "border-destructive/30" },
+  warning: { Icon: AlertTriangle, tone: "text-warning", edge: "border-warning/30" },
+  info: { Icon: Info, tone: "text-primary", edge: "border-border" },
+} as const;
 
-  const styles = getSeverityStyles();
+export const ErrorToast: React.FC<ErrorToastProps> = ({ error, onDismiss }) => {
+  const { Icon, tone, edge } =
+    error.severity === "critical" || error.severity === "error"
+      ? SEVERITY.error
+      : error.severity === "warning"
+        ? SEVERITY.warning
+        : SEVERITY.info;
 
   return (
     <div
-      className={`${styles.bg} ${styles.border} border rounded-lg p-4 flex gap-3 items-start animate-in fade-in slide-in-from-top-2 duration-300`}
+      role="alert"
+      className={cn(
+        "flex animate-toast-in items-start gap-3 rounded-xl border bg-popover p-3.5 text-popover-foreground shadow-[var(--highlight),var(--shadow-lg)]",
+        edge
+      )}
     >
-      <styles.Icon className={`w-5 h-5 ${styles.icon} shrink-0 mt-0.5`} />
-      <div className={`flex-1 ${styles.text}`}>
-        <p className="font-medium text-sm">{error.userMessage}</p>
+      <Icon className={cn("mt-0.5 h-4 w-4 shrink-0", tone)} aria-hidden />
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium leading-snug">{error.userMessage}</p>
         {error.message !== error.userMessage && (
-          <p className="text-xs opacity-75 mt-1">{error.message}</p>
+          <p className="mt-1 wrap-break-word text-xs text-muted-foreground">{error.message}</p>
         )}
       </div>
       <button
         onClick={onDismiss}
-        className={`${styles.text} opacity-60 hover:opacity-100 transition-opacity shrink-0`}
+        aria-label="Dismiss"
+        className="-m-1 shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
       >
-        <X className="w-4 h-4" />
+        <X className="h-4 w-4" aria-hidden />
       </button>
     </div>
   );
@@ -76,7 +57,7 @@ interface ErrorToastContainerProps {
 
 export const ErrorToastContainer: React.FC<ErrorToastContainerProps> = ({ errors, onDismiss }) => {
   return (
-    <div className="fixed top-4 right-4 z-50 space-y-2 max-w-sm">
+    <div className="fixed right-4 top-16 z-50 w-full max-w-sm space-y-2">
       {errors.map((error) => (
         <ErrorToast
           key={error.timestamp}

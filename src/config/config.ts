@@ -53,6 +53,10 @@ export const config = {
     pageUrl:
       process.env.VINBOT_TURNSTILE_PAGE_URL || "https://app.vinbot.app/desktop-turnstile",
   },
+  // The web app, for what the desktop app links out to (sign up, reset password)
+  web: {
+    baseUrl: process.env.REACT_APP_WEB_URL || "https://app.vinbot.app",
+  },
   vinted: {
     baseUrl:
       process.env.REACT_APP_VINTED_BASE_URL || "https://www.vinted.es",

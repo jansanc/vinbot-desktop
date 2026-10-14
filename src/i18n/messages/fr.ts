@@ -111,6 +111,13 @@ const fr: Messages = {
     sessionExpired: "Votre session a expiré. Reconnectez-vous depuis l'écran de connexion.",
     failedToStart: "Impossible de démarrer : {message}",
   },
+  update: {
+    title: "La version {version} est prête",
+    body: "Redémarrez pour mettre à jour maintenant, ou elle s'installera à la prochaine fermeture de l'application.",
+    restart: "Redémarrer et mettre à jour",
+    later: "Plus tard",
+    busy: "Votre session est encore en cours d'enregistrement. Redémarrez une fois terminé.",
+  },
   steps: {
     START: "Démarrage de la connexion...",
     IMPORT_START: "Lecture de votre session Firefox...",

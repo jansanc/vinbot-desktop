@@ -23,7 +23,7 @@ const resolvedBaseUrl =
  * login once it has TURNSTILE_SECRET_KEY; empty here means the app sends none.
  * Like the API URL, a packaged build reads no .env, so production needs it here.
  */
-const PRODUCTION_TURNSTILE_SITE_KEY = "";
+const PRODUCTION_TURNSTILE_SITE_KEY = "0x4AAAAAAFVj_8karWODwAVw";
 
 export const config = {
   api: {
@@ -51,11 +51,11 @@ export const config = {
     // Where the check page appears to live (see src/main/turnstile.ts). Its
     // hostname must be one the site key allows in the Cloudflare dashboard.
     pageUrl:
-      process.env.VINBOT_TURNSTILE_PAGE_URL || "https://app.vinbot.app/desktop-turnstile",
+      process.env.VINBOT_TURNSTILE_PAGE_URL || "https://start.vinbot.app/desktop-turnstile",
   },
   // The web app, for what the desktop app links out to (sign up, reset password)
   web: {
-    baseUrl: process.env.REACT_APP_WEB_URL || "https://app.vinbot.app",
+    baseUrl: process.env.REACT_APP_WEB_URL || "https://start.vinbot.app",
   },
   vinted: {
     baseUrl:

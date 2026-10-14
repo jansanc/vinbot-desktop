@@ -7,10 +7,11 @@ import { config } from "../config/config";
  *
  * The widget only runs on a hostname the site key allows, and the app's own
  * page is file://, which Cloudflare refuses. So the check gets a window of its
- * own, in a separate in-memory session where requests for
- * config.turnstile.pageUrl (on the web app's hostname) are answered with the
- * page below instead of going out. Everything else that page loads, Cloudflare's
- * script and challenge, goes to the network as usual.
+ * own, in a separate in-memory session, showing the page below loaded as data
+ * with config.turnstile.pageUrl (on the web app's hostname) as its origin.
+ * Nothing is fetched from that URL, and Cloudflare's script and challenge go
+ * over the browser's own network stack untouched: intercepting them (an
+ * earlier version) made real challenges fail with error 600010.
  *
  * The window stays hidden: "interaction-only" passes nearly everyone in the
  * background, and it is shown only when Cloudflare wants a click. It has no
@@ -64,21 +65,11 @@ let turnstileSession: Session | null = null;
 
 function getTurnstileSession(): Session {
   if (turnstileSession) return turnstileSession;
-  const { siteKey, pageUrl } = config.turnstile;
   const ses = session.fromPartition("turnstile");
 
   // Nothing the check needs; matches the default session
   ses.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
   ses.setPermissionCheckHandler(() => false);
-
-  ses.protocol.handle("https", (request) => {
-    if (request.method === "GET" && request.url.split(/[?#]/)[0] === pageUrl) {
-      return new Response(pageHtml(siteKey), {
-        headers: { "content-type": "text/html; charset=utf-8" },
-      });
-    }
-    return ses.fetch(request, { bypassCustomProtocolHandlers: true });
-  });
 
   turnstileSession = ses;
   return ses;
@@ -116,7 +107,12 @@ export async function getTurnstileToken(parent?: BrowserWindow | null): Promise<
 
   let timer: NodeJS.Timeout | undefined;
   try {
-    await win.loadURL(config.turnstile.pageUrl);
+    // The page is ours, but its origin is pageUrl's: Turnstile sees an allowed
+    // hostname, and nothing is fetched from it or intercepted
+    const html = Buffer.from(pageHtml(config.turnstile.siteKey)).toString("base64");
+    await win.loadURL(`data:text/html;charset=utf-8;base64,${html}`, {
+      baseURLForDataURL: config.turnstile.pageUrl,
+    });
 
     return await new Promise<string | undefined>((resolve) => {
       let settled = false;

@@ -12,11 +12,10 @@ the OS shows as the app version.
 the macOS app, so `.github/workflows/build.yml` builds each platform on its
 own runner.
 
-- Actions > **Build installers** > **Run workflow**, then download the
-  installers from the run's artifacts, or
-- push a tag matching the version (`git tag v1.0.1 && git push origin v1.0.1`)
-  to also get a **draft** GitHub Release with everything attached. Check it,
-  then publish it.
+- Actions > **Build installers** > **Run workflow** with no tag, then
+  download the installers from the run's artifacts (a test build), or
+- publish a GitHub Release: the installers are built from its tag and
+  attached to it a few minutes later (see Updates below).
 
 **Locally:** `npm ci`, then
 
@@ -32,7 +31,63 @@ builds the renderer and packages it into `dist-app/`:
 | `Vinbot-Authenticator-Portable-<version>.exe` | Windows, runs without installing. |
 | `Vinbot-Authenticator-<version>-mac.dmg` | macOS: open it, drag the app to Applications. Give this one to Mac users. |
 | `Vinbot-Authenticator-<version>-mac.zip` | macOS, the same app zipped. |
-| `latest*.yml`, `*.blockmap` | Only needed if auto-update is added later. |
+| `latest*.yml`, `*.blockmap` | What installed apps read to find and download an update. Always publish them with the installers. |
+
+## Updates
+
+Installed copies update themselves (`src/main/updater.ts`, `electron-updater`)
+from the Releases of this repo, `jansanc/vinbot-desktop`. It is public, so the
+apps download with no token. If it is ever made private again, updates stop:
+move them to a public releases-only repo first (`build.publish` in
+`package.json`, and the release job's `repository` and `token`).
+
+The app checks 10 seconds after launch and every 4 hours, downloads a new
+version in the background, then shows "Version x is ready" with *Restart to
+update*. If the user ignores it, the update installs the next time they quit.
+Restarting is refused while a session login or upload is running.
+
+No setup is needed: the release job writes with the workflow's own
+`GITHUB_TOKEN`.
+
+**Shipping a version**
+
+1. Bump `version` in `package.json`. Updates only go forward: the new version
+   must be higher than what users have. Commit and push.
+2. Test first: Actions > **Build installers** > **Run workflow** with no tag,
+   and try the installers from the run's artifacts. Publishing in the next
+   step goes straight to users; there is no draft stage.
+3. Releases > **Draft a new release**, with a new tag for that commit
+   (e.g. `1.1.0`), then **Publish**. CI builds both platforms and attaches
+   the installers, `latest.yml`, `latest-mac.yml` and the blockmaps a few
+   minutes later.
+4. That is the rollout. Once `latest.yml` is attached, every installed copy
+   picks the version up at its next launch, or within 4 hours while running.
+   A copy that checks in the minutes before the files are there finds no
+   `latest.yml`, logs it, and gets the update at its next check.
+
+To pull a bad release, delete it (or turn it back into a draft) before more
+users get it, then ship a fixed, higher version. Apps never downgrade. Don't
+replace files in a published release: copies that already read its
+`latest.yml` would reject the new installer's checksum.
+
+**Limits**
+
+- **Copies installed before 1.1.0 have no updater.** Users of 1.0.0 must
+  download and install 1.1.0 (or later) once by hand. From then on it is
+  automatic.
+- **macOS only updates signed builds.** macOS refuses to swap in an update
+  that isn't signed with a Developer ID (see Signing). Ad-hoc signed Mac
+  builds keep working, but never update.
+- **The Windows portable exe doesn't update.** Only the installer
+  (`Setup-<version>.exe`) does.
+- **Logs:** each machine keeps `updater.log` in the app's data folder:
+  `%APPDATA%\vinbot-desktop-authenticator\logs\` on Windows, and
+  `~/Library/Application Support/vinbot-desktop-authenticator/logs/` on
+  macOS. Ask for it when a user is stuck on an old version.
+
+The web app's download buttons (`NEXT_PUBLIC_AUTHENTICATOR_WINDOWS_URL` and
+`NEXT_PUBLIC_AUTHENTICATOR_MAC_URL` in vinted-api) can point at this repo's
+releases, or at R2 (see the deployment runbook).
 
 ## Signing
 

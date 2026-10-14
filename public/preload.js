@@ -32,6 +32,17 @@ contextBridge.exposeInMainWorld("electronAPI", {
       return () => ipcRenderer.removeListener("auth:unauthorized", listener);
     },
   },
+  // Background updates (src/main/updater.ts)
+  updater: {
+    getStatus: () => ipcRenderer.invoke("updater:getStatus"),
+    install: () => ipcRenderer.invoke("updater:install"),
+    // Returns unsubscribe
+    onStatus: (callback) => {
+      const listener = (event, status) => callback(status);
+      ipcRenderer.on("updater:status", listener);
+      return () => ipcRenderer.removeListener("updater:status", listener);
+    },
+  },
   // Interactive login handler
   interactiveLogin: (options) => ipcRenderer.invoke("vinted:interactiveLogin", options),
   // Import an existing session from the user's own Firefox (same progress/error events)

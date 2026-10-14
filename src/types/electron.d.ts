@@ -3,6 +3,12 @@ type IpcResult<T> =
   | { ok: false; error: { name: string; message: string; code?: string; status?: number } };
 
 declare global {
+  /** Mirrors UpdateStatus in src/main/updater.ts */
+  type UpdateStatus =
+    | { state: "idle" }
+    | { state: "downloading"; version: string; percent: number }
+    | { state: "ready"; version: string };
+
   interface Window {
     electronAPI: {
       // API calls proxied through the main process to bypass CORS.
@@ -26,6 +32,11 @@ declare global {
           callback: (session: { expiresIn: number; expiresAt: number }) => void
         ) => () => void;
         onUnauthorized?: (callback: (detail: { message: string }) => void) => () => void;
+      };
+      updater?: {
+        getStatus: () => Promise<UpdateStatus>;
+        install: () => Promise<{ ok: true } | { ok: false; reason: "not-ready" | "busy" }>;
+        onStatus: (callback: (status: UpdateStatus) => void) => () => void;
       };
       // Typed loosely; the flows call these through (window as any).
       interactiveLogin: (options: Record<string, unknown>) => Promise<any>;

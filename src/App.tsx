@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import InteractiveLoginFlow from "./components/InteractiveLoginFlow";
 import LoginForm from "./components/LoginForm";
 import UserHeader from "./components/UserHeader";
+import UpdateBanner from "./components/UpdateBanner";
 import { AuthState } from "./types";
 import {
   AuthService,
@@ -245,6 +246,7 @@ function AppContent() {
           }
         />
         <ErrorToastContainer errors={errors} onDismiss={removeError} />
+        <UpdateBanner />
       </>
     );
   }
@@ -263,6 +265,7 @@ function AppContent() {
         </main>
       </div>
       <ErrorToastContainer errors={errors} onDismiss={removeError} />
+      <UpdateBanner />
     </>
   );
 }

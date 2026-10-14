@@ -12,6 +12,7 @@ import {
 } from "../modules/vinted/session/firefoxSessionImporter";
 import { SessionUploadService } from "../modules/vinted/session/sessionUpload.service";
 import { registerAuthHandlers, redactSession } from "./api/auth.handlers";
+import { markBusy, startUpdater } from "./updater";
 import { tokenStore } from "./api/token-store";
 import { UnauthorizedError } from "../services/errors";
 
@@ -568,6 +569,9 @@ function registerIPCHandlers() {
   // main so requests carry no Origin header and bypass CORS entirely.
   registerAuthHandlers();
 
+  // Background updates (no-op outside an installed build)
+  startUpdater();
+
   // Interactive login — open browser for user to log in, then extract & upload session to S3
   ipcMain.handle("vinted:interactiveLogin", async (event, options: {
     url: string;
@@ -582,6 +586,8 @@ function registerIPCHandlers() {
     // The archive only exists to be uploaded; remove it however the flow ends
     // so each login doesn't leave ~20 MB behind in %TEMP%.
     let archivePath: string | undefined;
+    // "Restart to update" waits until this is done
+    const releaseBusy = markBusy();
     try {
       const {
         profileName,
@@ -669,6 +675,7 @@ function registerIPCHandlers() {
         message: errorMessage,
       };
     } finally {
+      releaseBusy();
       if (archivePath) {
         try {
           fs.rmSync(archivePath, { force: true });
@@ -709,6 +716,8 @@ function registerIPCHandlers() {
     uploadToS3?: boolean;
   }) => {
     let archivePath: string | undefined;
+    // "Restart to update" waits until this is done
+    const releaseBusy = markBusy();
     const sendProgress: ProgressSender = (step, message) => {
       console.log(`[IPC] ${step}: ${message}`);
       event.sender.send("interactive-login-progress", {
@@ -780,6 +789,7 @@ function registerIPCHandlers() {
       });
       return { success: false, message: errorMessage };
     } finally {
+      releaseBusy();
       if (archivePath) {
         try {
           fs.rmSync(archivePath, { force: true });

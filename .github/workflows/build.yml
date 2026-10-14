@@ -10,7 +10,11 @@
 #   - Run it by hand with no tag to just build; download the installers from
 #     the run's artifacts.
 #
-# Bump "version" in package.json before tagging: it names the files.
+# Bump "version" in package.json before tagging: it names the files, and
+# installed apps only update to a higher version.
+#
+# Installed apps update from this repo's latest published release
+# (src/main/updater.ts), using the latest*.yml and *.blockmap attached here.
 #
 # Without the Apple secrets below, the macOS app is only ad-hoc signed: it runs,
 # but macOS blocks it on first open (see vault/RELEASING.md).
@@ -84,6 +88,7 @@ jobs:
             CSC_IDENTITY_AUTO_DISCOVERY=false npm run dist:mac -- -c.mac.identity=- -c.mac.hardenedRuntime=false
           fi
 
+      # *.blockmap and latest*.yml are what installed apps read to update
       - uses: actions/upload-artifact@v4
         with:
           name: installers-${{ runner.os }}
@@ -92,7 +97,11 @@ jobs:
             dist-app/*.exe
             dist-app/*.dmg
             dist-app/*.zip
+            dist-app/*.blockmap
+            dist-app/latest*.yml
 
+  # Attaches everything to the release. Once it is attached, installed apps
+  # pick the version up (the repo is public, so they need no token).
   release:
     if: github.event_name == 'release' || inputs.tag != ''
     needs: build

@@ -4,15 +4,6 @@
    type, radii and shadows, so the desktop app reads as the same product.
    Compiled by the Tailwind CLI to public/output.css (npm run css:build). */
 
-/* The scan is limited to the code the app runs: the unused flows in
-   src/components (ExtractionForm, ProfileUploadFlow, ...) would only add
-   classes nobody sees. */
-@source not "./src/components/ExtractionForm.tsx";
-@source not "./src/components/ProfileUploadFlow.tsx";
-@source not "./src/components/UserProfile.tsx";
-@source not "./src/components/ResultsDisplay.tsx";
-@source not "./src/components/ProgressDisplay.tsx";
-
 @custom-variant dark (&:is(.dark *));
 
 /* Inter with its optical-size axis, bundled: the page's CSP loads fonts only

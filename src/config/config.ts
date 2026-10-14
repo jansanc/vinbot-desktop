@@ -17,6 +17,14 @@ const PRODUCTION_API_URL = "https://api.vinbot.app";
 const resolvedBaseUrl =
   process.env.REACT_APP_API_URL || process.env.VINBOT_API_URL || PRODUCTION_API_URL;
 
+/**
+ * Cloudflare Turnstile site key: the same public key the web app is built with
+ * (NEXT_PUBLIC_TURNSTILE_SITE_KEY in vinted-api). The API asks for a token on
+ * login once it has TURNSTILE_SECRET_KEY; empty here means the app sends none.
+ * Like the API URL, a packaged build reads no .env, so production needs it here.
+ */
+const PRODUCTION_TURNSTILE_SITE_KEY = "";
+
 export const config = {
   api: {
     baseUrl: resolvedBaseUrl,
@@ -33,6 +41,13 @@ export const config = {
         profileDownload: "/api/v1/integrations/vinted/profile/download",
       },
     },
+  },
+  turnstile: {
+    siteKey: process.env.VINBOT_TURNSTILE_SITE_KEY ?? PRODUCTION_TURNSTILE_SITE_KEY,
+    // Where the check page appears to live (see src/main/turnstile.ts). Its
+    // hostname must be one the site key allows in the Cloudflare dashboard.
+    pageUrl:
+      process.env.VINBOT_TURNSTILE_PAGE_URL || "https://app.vinbot.app/desktop-turnstile",
   },
   vinted: {
     baseUrl:

@@ -47,6 +47,8 @@ export interface LoginResponse {
 export interface LoginCredentials {
   email: string;
   password: string;
+  /** Cloudflare Turnstile token, added by main (src/main/turnstile.ts) */
+  captchaToken?: string;
 }
 
 export interface DesktopSessionResponse {

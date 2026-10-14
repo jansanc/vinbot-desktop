@@ -1,5 +1,6 @@
-import { ipcMain } from "electron";
+import { BrowserWindow, ipcMain } from "electron";
 import { ApiService, UnauthorizedError } from "../../services/api.service";
+import { getTurnstileToken } from "../turnstile";
 import { tokenStore } from "./token-store";
 
 /**
@@ -50,9 +51,15 @@ async function run<T>(operation: () => Promise<T>): Promise<IpcResult<T>> {
 }
 
 export function registerAuthHandlers(): void {
-  ipcMain.handle("api:login", async (_event, credentials: { email: string; password: string }) =>
+  ipcMain.handle("api:login", async (event, credentials: { email: string; password: string }) =>
     run(async () => {
-      const response = await ApiService.login(credentials);
+      // Main runs the check itself: the renderer neither supplies nor sees the token
+      const captchaToken = await getTurnstileToken(BrowserWindow.fromWebContents(event.sender));
+      const response = await ApiService.login({
+        email: credentials.email,
+        password: credentials.password,
+        captchaToken,
+      });
       const session = response.data?.session;
 
       if (session?.accessToken) {

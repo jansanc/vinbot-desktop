@@ -61,6 +61,16 @@
     "copyright": "Copyright © 2026 Vinbot",
     "extends": null,
     "asar": true,
+    "compression": "maximum",
+    "electronLanguages": [
+      "en-US",
+      "en-GB",
+      "es",
+      "es-419",
+      "ca",
+      "fr"
+    ],
+    "afterPack": "build-resources/after-pack.js",
     "files": [
       "public/electron.js",
       "public/preload.js",
@@ -72,6 +82,9 @@
       "dist/**/*.js",
       "!dist/**/*.map",
       "!dist/**/*.test.js",
+      "!node_modules/sql.js/dist/{sql-asm*,sql-wasm-debug*,sql-wasm-browser*,worker.*}",
+      "!node_modules/sql.js/{.devcontainer,*.md,*.svg,*.js,*.cjs,*.json}",
+      "node_modules/sql.js/package.json",
       "package.json"
     ],
     "directories": {

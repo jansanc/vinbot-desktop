@@ -206,6 +206,12 @@ export class InteractiveSessionExtractor {
       "app.normandy.enabled": false,
       "app.shield.optoutstudies.enabled": false,
       "browser.disableResetPrompt": true,
+      // Firefox Suggest's data (15+ MB) is downloaded on a new profile's
+      // first start, competing with Vinted's page; the address bar it serves
+      // is hidden anyway
+      "browser.urlbar.quicksuggest.enabled": false,
+      "browser.urlbar.suggest.quicksuggest.sponsored": false,
+      "browser.urlbar.suggest.quicksuggest.nonsponsored": false,
       "browser.translations.automaticallyPopup": false,
       "browser.translations.enable": false,
       "app.update.auto": false,

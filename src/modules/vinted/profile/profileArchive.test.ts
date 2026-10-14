@@ -25,9 +25,25 @@ describe("includeInProfileArchive", () => {
     }
   });
 
+  it("drops data Firefox downloads or rebuilds by itself", () => {
+    for (const entry of [
+      "vinted_login_1/remote-settings/quicksuggest-amp.sql-wal",
+      "vinted_login_1/storage/permanent/chrome",
+      "vinted_login_1/storage/permanent/chrome/idb/3870112724rsegmnoittet-es.sqlite",
+      "vinted_login_1/suggest.sqlite-wal",
+      "vinted_login_1/domain_to_categories.sqlite",
+      "vinted_login_1/f60d1ee6.sqlite",
+    ]) {
+      expect(includeInProfileArchive(entry), entry).toBe(false);
+    }
+    // ...but not a website's storage that happens to look alike
+    expect(includeInProfileArchive("vinted_login_1/storage/default/https+++www.vinted.es/idb/f60d1ee6.sqlite")).toBe(true);
+  });
+
   it("never lets saved passwords or history leave the machine", () => {
     for (const entry of [
       "vinted_login_1/logins.json",
+      "vinted_login_1/logins.db",
       "vinted_login_1/key4.db",
       "vinted_login_1/places.sqlite",
       "vinted_login_1/places.sqlite-wal",

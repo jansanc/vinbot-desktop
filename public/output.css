@@ -273,9 +273,6 @@
   .mt-3 {
     margin-top: calc(var(--spacing) * 3);
   }
-  .mt-4 {
-    margin-top: calc(var(--spacing) * 4);
-  }
   .mt-6 {
     margin-top: calc(var(--spacing) * 6);
   }
@@ -323,9 +320,6 @@
     width: calc(var(--spacing) * 8);
     height: calc(var(--spacing) * 8);
   }
-  .h-2 {
-    height: calc(var(--spacing) * 2);
-  }
   .h-3\.5 {
     height: calc(var(--spacing) * 3.5);
   }
@@ -370,9 +364,6 @@
   }
   .min-h-screen {
     min-height: 100vh;
-  }
-  .w-2 {
-    width: calc(var(--spacing) * 2);
   }
   .w-3\.5 {
     width: calc(var(--spacing) * 3.5);
@@ -425,9 +416,6 @@
   .shrink-0 {
     flex-shrink: 0;
   }
-  .rotate-180 {
-    rotate: 180deg;
-  }
   .transform {
     transform: var(--tw-rotate-x,) var(--tw-rotate-y,) var(--tw-rotate-z,) var(--tw-skew-x,) var(--tw-skew-y,);
   }
@@ -442,9 +430,6 @@
   }
   .cursor-pointer {
     cursor: pointer;
-  }
-  .grid-cols-2 {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .flex-col {
     flex-direction: column;
@@ -497,11 +482,6 @@
     --tw-space-y-reverse: 0;
     margin-block-start: calc(calc(var(--spacing) * 2) * var(--tw-space-y-reverse));
     margin-block-end: calc(calc(var(--spacing) * 2) * calc(1 - var(--tw-space-y-reverse)));
-  }
-  :where(.space-y-4 > :not(:last-child)) {
-    --tw-space-y-reverse: 0;
-    margin-block-start: calc(calc(var(--spacing) * 4) * var(--tw-space-y-reverse));
-    margin-block-end: calc(calc(var(--spacing) * 4) * calc(1 - var(--tw-space-y-reverse)));
   }
   :where(.space-y-6 > :not(:last-child)) {
     --tw-space-y-reverse: 0;
@@ -574,34 +554,16 @@
   .border-gray-200 {
     border-color: var(--color-gray-200);
   }
-  .border-input {
-    border-color: var(--input);
-  }
-  .border-input\/60 {
-    border-color: var(--input);
-    @supports (color: color-mix(in lab, red, red)) {
-      border-color: color-mix(in oklab, var(--input) 60%, transparent);
-    }
-  }
   .border-input\/75 {
     border-color: var(--input);
     @supports (color: color-mix(in lab, red, red)) {
       border-color: color-mix(in oklab, var(--input) 75%, transparent);
     }
   }
-  .border-primary {
-    border-color: var(--primary);
-  }
   .border-primary\/25 {
     border-color: var(--primary);
     @supports (color: color-mix(in lab, red, red)) {
       border-color: color-mix(in oklab, var(--primary) 25%, transparent);
-    }
-  }
-  .border-primary\/60 {
-    border-color: var(--primary);
-    @supports (color: color-mix(in lab, red, red)) {
-      border-color: color-mix(in oklab, var(--primary) 60%, transparent);
     }
   }
   .border-success\/25 {
@@ -659,12 +621,6 @@
   }
   .bg-muted {
     background-color: var(--muted);
-  }
-  .bg-muted\/60 {
-    background-color: var(--muted);
-    @supports (color: color-mix(in lab, red, red)) {
-      background-color: color-mix(in oklab, var(--muted) 60%, transparent);
-    }
   }
   .bg-popover {
     background-color: var(--popover);
@@ -732,9 +688,6 @@
   .p-1 {
     padding: var(--spacing);
   }
-  .p-3 {
-    padding: calc(var(--spacing) * 3);
-  }
   .p-3\.5 {
     padding: calc(var(--spacing) * 3.5);
   }
@@ -792,14 +745,8 @@
   .py-12 {
     padding-block: calc(var(--spacing) * 12);
   }
-  .py-px {
-    padding-block: 1px;
-  }
   .pt-0 {
     padding-top: 0px;
-  }
-  .pt-4 {
-    padding-top: calc(var(--spacing) * 4);
   }
   .pt-5 {
     padding-top: calc(var(--spacing) * 5);
@@ -812,9 +759,6 @@
   }
   .text-center {
     text-align: center;
-  }
-  .text-left {
-    text-align: left;
   }
   .display {
     font-family: var(--font-sans);
@@ -833,9 +777,6 @@
   }
   .text-\[11\.5px\] {
     font-size: 11.5px;
-  }
-  .text-\[11px\] {
-    font-size: 11px;
   }
   .text-\[12\.5px\] {
     font-size: 12.5px;
@@ -1003,18 +944,8 @@
     transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
     transition-duration: var(--tw-duration, var(--default-transition-duration));
   }
-  .transition-\[background-color\,border-color\] {
-    transition-property: background-color,border-color;
-    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
-    transition-duration: var(--tw-duration, var(--default-transition-duration));
-  }
   .transition-\[background-color\,color\,border-color\,box-shadow\,transform\] {
     transition-property: background-color,color,border-color,box-shadow,transform;
-    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
-    transition-duration: var(--tw-duration, var(--default-transition-duration));
-  }
-  .transition-\[background-color\,color\,box-shadow\] {
-    transition-property: background-color,color,box-shadow;
     transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
     transition-duration: var(--tw-duration, var(--default-transition-duration));
   }
@@ -1025,11 +956,6 @@
   }
   .transition-colors {
     transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to;
-    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
-    transition-duration: var(--tw-duration, var(--default-transition-duration));
-  }
-  .transition-transform {
-    transition-property: transform, translate, scale, rotate;
     transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
     transition-duration: var(--tw-duration, var(--default-transition-duration));
   }
@@ -1073,24 +999,8 @@
     .hover\:border-input:hover {
       border-color: var(--input);
     }
-    .hover\:border-input\/60:hover {
-      border-color: var(--input);
-    }
-    @supports (color: color-mix(in lab, red, red)) {
-      .hover\:border-input\/60:hover {
-        border-color: color-mix(in oklab, var(--input) 60%, transparent);
-      }
-    }
     .hover\:bg-accent:hover {
       background-color: var(--accent);
-    }
-    .hover\:bg-accent\/60:hover {
-      background-color: var(--accent);
-    }
-    @supports (color: color-mix(in lab, red, red)) {
-      .hover\:bg-accent\/60:hover {
-        background-color: color-mix(in oklab, var(--accent) 60%, transparent);
-      }
     }
     .hover\:bg-destructive\/90:hover {
       background-color: var(--destructive);
@@ -1195,9 +1105,6 @@
     .lg\:gap-8 {
       gap: calc(var(--spacing) * 8);
     }
-  }
-  .dark\:bg-accent:is(.dark *) {
-    background-color: var(--accent);
   }
   .\[\&_p\]\:leading-relaxed p {
     --tw-leading: var(--leading-relaxed);

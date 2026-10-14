@@ -32,7 +32,61 @@ builds the renderer and packages it into `dist-app/`:
 | `Vinbot-Authenticator-Portable-<version>.exe` | Windows, runs without installing. |
 | `Vinbot-Authenticator-<version>-mac.dmg` | macOS: open it, drag the app to Applications. Give this one to Mac users. |
 | `Vinbot-Authenticator-<version>-mac.zip` | macOS, the same app zipped. |
-| `latest*.yml`, `*.blockmap` | Only needed if auto-update is added later. |
+| `latest*.yml`, `*.blockmap` | What installed apps read to find and download an update. Always publish them with the installers. |
+
+## Updates
+
+Installed copies update themselves (`src/main/updater.ts`, `electron-updater`)
+from the Releases of the **public** repo `jansanc/vinbot-desktop-releases`.
+It holds only the installers; the source repo stays private, and the apps
+download with no token.
+
+The app checks 10 seconds after launch and every 4 hours, downloads a new
+version in the background, then shows "Version x is ready" with *Restart to
+update*. If the user ignores it, the update installs the next time they quit.
+Restarting is refused while a session login or upload is running.
+
+**One-time setup**
+
+1. Create the public repo `jansanc/vinbot-desktop-releases` (it can be empty).
+2. Create a token that can write to it: a fine-grained personal access token
+   limited to that repo, with *Contents: Read and write*.
+3. Add it to this repo as the `RELEASES_TOKEN` Actions secret.
+
+**Shipping a version**
+
+1. Bump `version` in `package.json`. Updates only go forward: the new version
+   must be higher than what users have.
+2. Commit, then `git tag v<version> && git push origin v<version>`.
+3. CI builds both platforms and creates a **draft** release in
+   `vinbot-desktop-releases` with the installers, `latest.yml`,
+   `latest-mac.yml` and the blockmaps.
+4. Test the installers, then **publish** the draft. Publishing is the
+   rollout: every installed copy picks it up within about 4 hours, or at its
+   next launch.
+
+To pull a bad release, delete it (or turn it back into a draft) before more
+users get it, then ship a fixed, higher version. Apps never downgrade.
+
+**Limits**
+
+- **Copies installed before 1.1.0 have no updater.** Users of 1.0.0 must
+  download and install 1.1.0 (or later) once by hand. From then on it is
+  automatic.
+- **macOS only updates signed builds.** macOS refuses to swap in an update
+  that isn't signed with a Developer ID (see Signing). Ad-hoc signed Mac
+  builds keep working, but never update.
+- **The Windows portable exe doesn't update.** Only the installer
+  (`Setup-<version>.exe`) does.
+- **Logs:** each machine keeps `updater.log` in the app's data folder:
+  `%APPDATA%\vinbot-desktop-authenticator\logs\` on Windows, and
+  `~/Library/Application Support/vinbot-desktop-authenticator/logs/` on
+  macOS. Ask for it when a user is stuck on an old version.
+
+The web app's download buttons (`NEXT_PUBLIC_AUTHENTICATOR_WINDOWS_URL` and
+`NEXT_PUBLIC_AUTHENTICATOR_MAC_URL` in vinted-api) should point at the public
+releases repo as well. The private repo's links fail for anyone not signed in
+to GitHub with access to it.
 
 ## Signing
 

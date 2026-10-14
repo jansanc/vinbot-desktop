@@ -112,6 +112,13 @@ const en = {
     sessionExpired: "Your session has expired. Please log in again from the login page.",
     failedToStart: "Couldn't start: {message}",
   },
+  update: {
+    title: "Version {version} is ready",
+    body: "Restart to update now, or it installs the next time you close the app.",
+    restart: "Restart to update",
+    later: "Later",
+    busy: "Your session is still being saved. Restart once it finishes.",
+  },
   // Progress of a login or import, by the step main reports
   steps: {
     START: "Starting login process...",

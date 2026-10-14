@@ -110,6 +110,13 @@ const es: Messages = {
     sessionExpired: "Tu sesión ha caducado. Vuelve a iniciar sesión desde la pantalla de inicio.",
     failedToStart: "No se ha podido iniciar: {message}",
   },
+  update: {
+    title: "La versión {version} está lista",
+    body: "Reinicia para actualizar ahora, o se instalará la próxima vez que cierres la aplicación.",
+    restart: "Reiniciar y actualizar",
+    later: "Más tarde",
+    busy: "Tu sesión aún se está guardando. Reinicia cuando termine.",
+  },
   steps: {
     START: "Iniciando el proceso de inicio de sesión...",
     IMPORT_START: "Leyendo tu sesión de Firefox...",

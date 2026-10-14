@@ -110,6 +110,13 @@ const ca: Messages = {
     sessionExpired: "La teva sessió ha caducat. Torna a iniciar la sessió des de la pantalla d'inici.",
     failedToStart: "No s'ha pogut iniciar: {message}",
   },
+  update: {
+    title: "La versió {version} està a punt",
+    body: "Reinicia per actualitzar ara, o s'instal·larà la propera vegada que tanquis l'aplicació.",
+    restart: "Reinicia i actualitza",
+    later: "Més tard",
+    busy: "La teva sessió encara s'està desant. Reinicia quan acabi.",
+  },
   steps: {
     START: "Iniciant el procés d'inici de sessió...",
     IMPORT_START: "Llegint la teva sessió de Firefox...",

@@ -144,9 +144,9 @@ lives in `devDependencies`. A new package used by the main process must go in
 
 ## Smoke test before sending
 
-On a clean machine of each OS: install, log in, import a Firefox session,
-and run one "Log in with Firefox" flow end to end. On macOS, check that
-closing the Firefox window (not ⌘Q) saves the session.
+On a clean machine of each OS: install, sign in (email and Google), and run
+one "Open Firefox and log in" flow end to end. On macOS, check that closing
+the Firefox window (not ⌘Q) saves the session.
 
 ## Troubleshooting
 

@@ -4,8 +4,8 @@ import { app, BrowserWindow, ipcMain } from "electron";
 import { autoUpdater, type UpdateInfo } from "electron-updater";
 
 /**
- * Keeps installed copies up to date, from the Releases of the public
- * jansanc/vinbot-desktop-releases repo (package.json build.publish; see
+ * Keeps installed copies up to date, from the Releases of this repo,
+ * jansanc/vinbot-desktop, which is public (package.json build.publish; see
  * vault/RELEASING.md). A release only reaches users once it is published,
  * not while it is a draft.
  *

@@ -108,7 +108,7 @@
       {
         "provider": "github",
         "owner": "jansanc",
-        "repo": "vinbot-desktop-releases",
+        "repo": "vinbot-desktop",
         "releaseType": "release"
       }
     ],

@@ -4,10 +4,9 @@
 #   - Run it by hand (Actions > Build installers > Run workflow) and download
 #     the installers from the run's artifacts.
 #   - Or push a version tag (git tag v1.0.1 && git push origin v1.0.1) to also
-#     get a draft Release with the installers attached, in the public
-#     jansanc/vinbot-desktop-releases repo. Installed apps update from there
-#     once it is published (src/main/updater.ts). Needs the RELEASES_TOKEN
-#     secret: a token that can write to that repo's contents.
+#     get a draft GitHub Release with the installers attached. Installed apps
+#     update from this repo's releases once one is published
+#     (src/main/updater.ts).
 #
 # Without the Apple secrets below, the macOS app is only ad-hoc signed: it runs,
 # but macOS blocks it on first open (see vault/RELEASING.md).
@@ -70,13 +69,15 @@ jobs:
             dist-app/*.blockmap
             dist-app/latest*.yml
 
-  # A draft in the public releases repo: the source repo is private, and the
-  # apps download updates with no token. Publishing the draft is what rolls
-  # the version out to every installed copy, so check it first.
+  # A draft release in this (public) repo, which the apps read with no token.
+  # Publishing the draft is what rolls the version out to every installed
+  # copy, so check it first.
   release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -85,9 +86,6 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
-          repository: jansanc/vinbot-desktop-releases
-          token: ${{ secrets.RELEASES_TOKEN }}
-          tag_name: ${{ github.ref_name }}
           draft: true
           # latest*.yml and *.blockmap are what the updater reads
           files: installers/*

@@ -37,30 +37,26 @@ builds the renderer and packages it into `dist-app/`:
 ## Updates
 
 Installed copies update themselves (`src/main/updater.ts`, `electron-updater`)
-from the Releases of the **public** repo `jansanc/vinbot-desktop-releases`.
-It holds only the installers; the source repo stays private, and the apps
-download with no token.
+from the Releases of this repo, `jansanc/vinbot-desktop`. It is public, so the
+apps download with no token. If it is ever made private again, updates stop:
+move them to a public releases-only repo first (`build.publish` in
+`package.json`, and the release job's `repository` and `token`).
 
 The app checks 10 seconds after launch and every 4 hours, downloads a new
 version in the background, then shows "Version x is ready" with *Restart to
 update*. If the user ignores it, the update installs the next time they quit.
 Restarting is refused while a session login or upload is running.
 
-**One-time setup**
-
-1. Create the public repo `jansanc/vinbot-desktop-releases` (it can be empty).
-2. Create a token that can write to it: a fine-grained personal access token
-   limited to that repo, with *Contents: Read and write*.
-3. Add it to this repo as the `RELEASES_TOKEN` Actions secret.
+No setup is needed: the release job writes with the workflow's own
+`GITHUB_TOKEN`.
 
 **Shipping a version**
 
 1. Bump `version` in `package.json`. Updates only go forward: the new version
    must be higher than what users have.
 2. Commit, then `git tag v<version> && git push origin v<version>`.
-3. CI builds both platforms and creates a **draft** release in
-   `vinbot-desktop-releases` with the installers, `latest.yml`,
-   `latest-mac.yml` and the blockmaps.
+3. CI builds both platforms and creates a **draft** release in this repo
+   with the installers, `latest.yml`, `latest-mac.yml` and the blockmaps.
 4. Test the installers, then **publish** the draft. Publishing is the
    rollout: every installed copy picks it up within about 4 hours, or at its
    next launch.
@@ -84,9 +80,8 @@ users get it, then ship a fixed, higher version. Apps never downgrade.
   macOS. Ask for it when a user is stuck on an old version.
 
 The web app's download buttons (`NEXT_PUBLIC_AUTHENTICATOR_WINDOWS_URL` and
-`NEXT_PUBLIC_AUTHENTICATOR_MAC_URL` in vinted-api) should point at the public
-releases repo as well. The private repo's links fail for anyone not signed in
-to GitHub with access to it.
+`NEXT_PUBLIC_AUTHENTICATOR_MAC_URL` in vinted-api) can point at this repo's
+releases, or at R2 (see the deployment runbook).
 
 ## Signing
 

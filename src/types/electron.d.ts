@@ -13,8 +13,7 @@ declare global {
   type InteractiveLoginResponse = {
     success: boolean;
     message: string;
-    session?: { profile_archive_size: number };
-    code?: "LOGIN_TIMEOUT" | "LOGIN_CANCELLED" | "FIREFOX_NOT_FOUND" | "SESSION_EXPIRED" | "LOGIN_IN_PROGRESS";
+    code?: "LOGIN_TIMEOUT" | "LOGIN_CANCELLED" | "FIREFOX_NOT_FOUND" | "NOT_LOGGED_IN" | "SESSION_EXPIRED" | "LOGIN_IN_PROGRESS";
   };
 
   interface Window {

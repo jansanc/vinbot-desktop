@@ -18,8 +18,6 @@ export interface SessionStorage {
 
 /** A captured Vinted session, as sent to the link endpoint. */
 export interface ExtractedSession {
-  profile_name: string;
-  profile_path: string;
   url: string;
   cookies: SessionCookie[];
   storage: SessionStorage;
@@ -32,7 +30,6 @@ export interface SessionUploadOptions {
   vintedEmail: string;
   vintedMemberId?: string;
   accessToken?: string;
-  profileS3?: string; // S3 path to store in vinted_accounts.profile_s3
 }
 
 export interface LinkVintedAccountPayload {
@@ -41,7 +38,6 @@ export interface LinkVintedAccountPayload {
   sessionData: Array<Record<string, unknown>>;
   sessionOrigins: Array<Record<string, unknown>>;
   browserFingerprint: Record<string, unknown>;
-  profile_s3?: string; // S3 path to the browser profile archive
 }
 
 export class SessionUploadService {
@@ -108,11 +104,6 @@ export class SessionUploadService {
         sessionOrigins,
         browserFingerprint: {},
       };
-
-      // Add S3 profile path if available
-      if (options.profileS3) {
-        linkPayload.profile_s3 = options.profileS3;
-      }
 
       console.log("[SessionUploadService] Linking Vinted account with consolidated endpoint:", {
         vintedEmail: options.vintedEmail,

@@ -41,8 +41,6 @@ export const config = {
       },
       vinted: {
         link: "/api/v1/vinted/auth/link",
-        profileUpload: "/api/v1/vinted/auth/profile-upload",
-        profileDownload: "/api/v1/integrations/vinted/profile/download",
       },
     },
   },

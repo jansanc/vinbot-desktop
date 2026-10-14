@@ -8,16 +8,11 @@ import { Label } from "./ui/label";
 import { useI18n } from "../i18n/I18nContext";
 import type { MessageKey } from "../i18n/messages";
 
-/** A login's profile is several MB; small ones still read in KB. */
-function formatSize(bytes: number): string {
-  return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 /** macOS names Firefox's location differently in the not-found message. */
 const isMac = typeof navigator !== "undefined" && /Mac/i.test(navigator.userAgent);
 
 /** The progress steps main reports that the user sees, in order (see steps in the messages). */
-const STEPS = ["OPENING_FIREFOX", "WAITING_FOR_LOGIN", "LOGGED_IN", "SAVING", "UPLOADING", "LINKING"] as const;
+const STEPS = ["OPENING_FIREFOX", "WAITING_FOR_LOGIN", "LOGGED_IN", "SAVING", "LINKING"] as const;
 type Step = (typeof STEPS)[number];
 const isStep = (step: string): step is Step => (STEPS as readonly string[]).includes(step);
 
@@ -34,7 +29,7 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({ user
   const [vintedEmail, setVintedEmail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [steps, setSteps] = useState<Step[]>([]);
-  const [savedSize, setSavedSize] = useState<number | null>(null);
+  const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(
@@ -50,6 +45,8 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({ user
     switch (response.code) {
       case "LOGIN_TIMEOUT":
         return t("session.errorTimeout");
+      case "NOT_LOGGED_IN":
+        return t("session.errorNotLoggedIn");
       case "FIREFOX_NOT_FOUND":
         return t(isMac ? "session.errorFirefoxNotFoundMac" : "session.errorFirefoxNotFound");
       case "SESSION_EXPIRED":
@@ -73,7 +70,7 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({ user
         vintedEmail: vintedEmail.trim(),
       });
       if (response.success) {
-        setSavedSize(response.session?.profile_archive_size ?? 0);
+        setSaved(true);
       } else if (response.code !== "LOGIN_CANCELLED") {
         setError(errorText(response));
       }
@@ -87,7 +84,7 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({ user
 
   const handleReset = () => {
     setSteps([]);
-    setSavedSize(null);
+    setSaved(false);
     setError(null);
   };
 
@@ -105,7 +102,7 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({ user
           </p>
         </div>
 
-        {savedSize === null ? (
+        {!saved ? (
           <Card>
             <CardHeader>
               <CardTitle>{t("session.cardTitle")}</CardTitle>
@@ -194,9 +191,6 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({ user
               <h2 className="display text-[22px]">{t("session.savedTitle")}</h2>
               <p className="mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">
                 {t("session.savedBody")}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground" data-numeric>
-                {t("session.sessionSize", { size: formatSize(savedSize) })}
               </p>
               <Button onClick={handleReset} variant="outline" className="mt-6">
                 {t("session.saveAnother")}

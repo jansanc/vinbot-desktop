@@ -1,9 +1,7 @@
 import path from "path";
 import os from "os";
 import { execFile, spawn, spawnSync, ChildProcess } from "child_process";
-import { existsSync, mkdirSync, writeFileSync, rmSync, statSync } from "fs";
-import * as tar from "tar";
-import { archiveNamePart, includeInProfileArchive } from "../profile/profileArchive";
+import { existsSync, mkdirSync, writeFileSync, rmSync } from "fs";
 import {
   hasCompleteVintedLogin,
   readVintedCookies,
@@ -19,7 +17,6 @@ export type LoginStatus = "waiting-for-login" | "logged-in" | "saving";
 
 export interface InteractiveLoginOptions {
   url: string;
-  profileName: string;
   /** Seconds the user has to log in. */
   timeout?: number;
   onStatus?: (status: LoginStatus) => void;
@@ -29,7 +26,7 @@ export interface InteractiveLoginOptions {
  * Why a login ended without a session, for the window to explain in the
  * user's language. Anything else is reported with its (English) message.
  */
-export type LoginFlowErrorCode = "LOGIN_TIMEOUT" | "LOGIN_CANCELLED" | "FIREFOX_NOT_FOUND";
+export type LoginFlowErrorCode = "LOGIN_TIMEOUT" | "LOGIN_CANCELLED" | "FIREFOX_NOT_FOUND" | "NOT_LOGGED_IN";
 
 export class LoginFlowError extends Error {
   constructor(public readonly code: LoginFlowErrorCode, message: string) {
@@ -38,24 +35,17 @@ export class LoginFlowError extends Error {
   }
 }
 
+/**
+ * A finished login. Only its Vinted cookies are sent anywhere: the API stores
+ * them as the account's session, and the backend's browser starts from them.
+ * The Firefox profile they came from never leaves the machine.
+ */
 export interface InteractiveLoginResult {
-  profile_name: string;
-  profile_path: string;
   url: string;
-  profile_archive_path: string;
-  profile_archive_size: number;
   extracted_at: number;
   loginDuration: number;
-  compressed_at: number;
-  /**
-   * What the Vinted cookies said when the window closed. Informational only:
-   * the profile is archived and uploaded whatever this says.
-   */
   vinted_login: VintedLoginState;
-  /**
-   * The Vinted cookies from the closed profile (see readVintedCookies), for
-   * the backend's session row. Empty when they couldn't be read.
-   */
+  /** The Vinted cookies from the closed profile (see readVintedCookies); always a complete login. */
   vinted_cookies: VintedCookie[];
 }
 
@@ -298,16 +288,6 @@ export class InteractiveSessionExtractor {
   }
 
   /**
-   * Undo prepareFirefoxProfile before archiving: the stripped-down window is
-   * for this login only, not something whoever restores the profile should get.
-   */
-  private cleanFirefoxProfile(profilePath: string): void {
-    rmSync(path.join(profilePath, "user.js"), { force: true });
-    rmSync(path.join(profilePath, "xulstore.json"), { force: true });
-    rmSync(path.join(profilePath, "chrome"), { recursive: true, force: true });
-  }
-
-  /**
    * Phase 1: Launch Firefox for interactive login (no automation)
    */
   private launchFirefox(firefoxPath: string, profilePath: string, url: string): ChildProcess {
@@ -315,7 +295,7 @@ export class InteractiveSessionExtractor {
     // Firefox's default behaviour, when any Firefox is already running, is to
     // hand the URL to that instance and exit immediately: the spawned process
     // dies in milliseconds, the wait-for-exit below returns at once, and what
-    // gets archived is the empty temp profile the user never typed into.
+    // gets read is the empty temp profile the user never typed into.
     //
     // -wait-for-browser is needed on Windows because firefox.exe is a launcher
     // process: it starts the real browser process and exits within ~200ms.
@@ -457,17 +437,16 @@ export class InteractiveSessionExtractor {
 
   /**
    * Interactive login: open Firefox on Vinted, wait until the user has logged
-   * in, close Firefox, and archive the profile it left behind.
+   * in, close Firefox, and read the Vinted cookies it left behind.
    *
    * The window closes by itself once the profile holds a logged-in session
    * (see hasCompleteVintedLogin). The user can also close it themselves; that
    * still saves the session, in case the login check ever misses one.
    */
   async interactiveLogin(options: InteractiveLoginOptions): Promise<InteractiveLoginResult> {
-    const { url, profileName, timeout = 300, onStatus } = options;
+    const { url, timeout = 300, onStatus } = options;
 
-    console.log(`[InteractiveLogin] Starting interactive login for ${profileName}`);
-    console.log(`[InteractiveLogin] URL: ${url}, Timeout: ${timeout}s`);
+        console.log(`[InteractiveLogin] URL: ${url}, Timeout: ${timeout}s`);
 
     // Create temporary profile directory
     const tempDir = os.tmpdir();
@@ -516,7 +495,7 @@ export class InteractiveSessionExtractor {
 
       // Close the window once the user is logged in. Reading the profile's
       // cookies (not the page) is what proves the session is on disk, ready
-      // to be archived, before the window closes.
+      // to be read, before the window closes.
       void (async () => {
         while (!closed && !closedBy) {
           await new Promise((resolve) => setTimeout(resolve, LOGIN_POLL_MS));
@@ -540,7 +519,7 @@ export class InteractiveSessionExtractor {
           `(by ${closedBy ? `this app: ${closedBy}` : "the user"})`
       );
 
-      // Nothing is archived, uploaded or linked after a timeout or cancel; the
+      // Nothing is read, sent or linked after a timeout or cancel; the
       // temp profile is discarded in the finally below.
       if (closedBy === "cancel") {
         throw new LoginFlowError("LOGIN_CANCELLED", "The login was cancelled, so nothing was saved.");
@@ -557,65 +536,30 @@ export class InteractiveSessionExtractor {
       // Give OS time to release file locks
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      this.cleanFirefoxProfile(this.tempProfileDir);
-
-      // Recorded, never blocking. A check that stopped here would also throw
-      // away the profile (cleaned up below), losing a real login if the check
-      // were ever wrong - so the profile is always archived and uploaded.
-      const vintedCookies = await readVintedCookies(this.tempProfileDir);
+      // Only the Vinted cookies leave this machine; the profile itself is
+      // deleted in the finally below.
+      const vintedCookies = (await readVintedCookies(this.tempProfileDir)) ?? [];
       const login = vintedLoginState(vintedCookies);
       console.log(
-        `[InteractiveLogin] Vinted login state when the window closed: ${login}`
+        `[InteractiveLogin] ${vintedCookies.length} Vinted cookie(s) when the window closed; login state: ${login}`
       );
-
-      // Phase 2: Compress entire profile folder to tar.gz
-      console.log(`[InteractiveLogin] Phase 2: Compressing profile folder to tar.gz...`);
-      const compressStartTime = Date.now();
-      const archivePath = path.join(os.tmpdir(), `vinted_login_${archiveNamePart(profileName)}_${Date.now()}.tar.gz`);
-
-      try {
-        // The whole profile minus what Firefox rebuilds by itself (caches,
-        // crash data, downloadable components) - see profileArchive. The
-        // complete folder is 100+ MB compressed, over Cloudflare's 100 MB
-        // request limit in front of api.vinbot.app, and was rejected with 413.
-        await tar.create(
-          {
-            gzip: true,
-            file: archivePath,
-            cwd: path.dirname(this.tempProfileDir),
-            filter: includeInProfileArchive,
-          },
-          [path.basename(this.tempProfileDir)]
+      // Without a user's refresh token there is no session to save: the API
+      // would keep nothing. That is the user closing the window before logging
+      // in (once logged in, the window closes by itself).
+      if (!hasCompleteVintedLogin(vintedCookies)) {
+        throw new LoginFlowError(
+          "NOT_LOGGED_IN",
+          "Firefox was closed before you logged in to Vinted, so nothing was saved."
         );
-
-        const stats = statSync(archivePath);
-        const archiveSizeBytes = stats.size;
-        const archiveSizeMB = (archiveSizeBytes / (1024 * 1024)).toFixed(2);
-        const compressTime = Date.now() - compressStartTime;
-
-        console.log(
-          `[InteractiveLogin] ✅ Profile compressed to tar.gz: ${archiveSizeMB}MB in ${compressTime}ms`
-        );
-
-        const result: InteractiveLoginResult = {
-          profile_name: profileName,
-          profile_path: this.tempProfileDir,
-          url: url,
-          profile_archive_path: archivePath,
-          profile_archive_size: archiveSizeBytes,
-          extracted_at: Date.now(),
-          loginDuration: loginDuration,
-          compressed_at: Date.now(),
-          vinted_login: login,
-          vinted_cookies: vintedCookies ?? [],
-        };
-
-        return result;
-      } catch (compressError) {
-        const msg = compressError instanceof Error ? compressError.message : String(compressError);
-        console.error(`[InteractiveLogin] ❌ Compression failed: ${msg}`);
-        throw new Error(`Profile compression failed: ${msg}`);
       }
+
+      return {
+        url,
+        extracted_at: Date.now(),
+        loginDuration,
+        vinted_login: login,
+        vinted_cookies: vintedCookies,
+      };
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       console.error(`[InteractiveLogin] ❌ Failed: ${msg}`);

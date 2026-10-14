@@ -1,5 +1,4 @@
 import { ipcMain } from "electron";
-import * as fs from "fs";
 import { config } from "../../config/config";
 import {
   InteractiveSessionExtractor,
@@ -8,7 +7,7 @@ import {
 } from "../../modules/vinted/session/interactiveSessionExtractor";
 import { tokenStore } from "../api/token-store";
 import { markBusy } from "../updater";
-import { uploadAndLinkSession, type LinkSessionResult, type ProgressSender } from "./session-link";
+import { linkSession, type LinkSessionResult, type ProgressSender } from "./session-link";
 
 /** The login in progress, if any: there is one Firefox login window at a time. */
 let activeLogin: InteractiveSessionExtractor | null = null;
@@ -40,15 +39,15 @@ type LoginResponse = LinkSessionResult & {
 };
 
 export function registerLoginHandlers(): void {
-  // Open Firefox for the user to log in to Vinted, then upload the session and
-  // link the account. Progress goes to the window on interactive-login-progress.
+  // Open Firefox for the user to log in to Vinted, then link the account with
+  // the login's cookies. Progress goes to the window on interactive-login-progress.
   ipcMain.handle(
     "vinted:interactiveLogin",
     async (event, options: { userEmail?: string; vintedEmail?: string; vintedMemberId?: string }) => {
       if (activeLogin) {
         return { success: false, code: "LOGIN_IN_PROGRESS", message: "A login is already in progress." } as LoginResponse;
       }
-      // There must be a session to upload with
+      // There must be a Vinbot session to link with
       if (!tokenStore.get()?.accessToken) {
         return { success: false, code: "SESSION_EXPIRED", message: "Session expired. Please log in again." } as LoginResponse;
       }
@@ -62,39 +61,31 @@ export function registerLoginHandlers(): void {
       activeLogin = extractor;
       // "Restart to update" waits until this is done
       const releaseBusy = markBusy();
-      // The archive only exists to be uploaded; remove it however the flow ends
-      // so each login doesn't leave ~20 MB behind in %TEMP%.
-      let archivePath: string | undefined;
 
       try {
         const url = loginUrl();
-        const profileName = `vinted_${Date.now()}`;
         sendProgress("OPENING_FIREFOX", `Opening Firefox at ${url}`);
 
         const result = await extractor.interactiveLogin({
           url,
-          profileName,
           timeout: config.vinted.loginTimeoutSeconds,
           onStatus: (status) => sendProgress(STATUS_STEPS[status], status),
         });
-        archivePath = result.profile_archive_path;
         console.log(
-          `[Login] Profile archived: ${(result.profile_archive_size / (1024 * 1024)).toFixed(2)}MB after ` +
-            `${(result.loginDuration / 1000).toFixed(1)}s; Vinted login state: ${result.vinted_login}`
+          `[Login] ${result.vinted_cookies.length} Vinted cookie(s) after ${(result.loginDuration / 1000).toFixed(1)}s; ` +
+            `login state: ${result.vinted_login}`
         );
 
-        return (await uploadAndLinkSession(
+        return await linkSession(
           event,
           result,
           {
-            profileName,
             userEmail: options.userEmail,
             vintedEmail: options.vintedEmail,
             vintedMemberId: options.vintedMemberId,
-            metadata: { loginUrl: url, type: "interactive-login" },
           },
           sendProgress
-        )) as LoginResponse;
+        );
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         console.error(`[Login] Interactive login failed: ${message}`);
@@ -106,13 +97,6 @@ export function registerLoginHandlers(): void {
       } finally {
         activeLogin = null;
         releaseBusy();
-        if (archivePath) {
-          try {
-            fs.rmSync(archivePath, { force: true });
-          } catch (e) {
-            console.warn(`[Login] Could not delete profile archive ${archivePath}: ${e}`);
-          }
-        }
       }
     }
   );

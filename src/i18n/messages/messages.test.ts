@@ -25,7 +25,7 @@ describe("translations", () => {
   });
 
   it("fills placeholders in", () => {
-    expect(translate("en", "session.sessionSize", { size: "4 MB" })).toBe("Session size: 4 MB");
+    expect(translate("en", "session.errorFailed", { message: "offline" })).toBe("Your session couldn't be saved: offline");
   });
 });
 

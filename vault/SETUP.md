@@ -157,7 +157,9 @@ C:\Users\<username>\AppData\Roaming\Vinbot Authenticator\vinted-auth\
 | `npm run electron-dev` | Compile TypeScript + run dev |
 | `npm run electron-build` | Build production app |
 | `npm run compile:main` | Just compile TypeScript |
-| `npm run react-build` | Just build React bundle |
+| `npm run renderer:build` | Just build the window (Vite) |
+| `npm run typecheck` | Typecheck the app and the CLI |
+| `npm test` | Run the tests (Vitest) |
 | `npm run extract:vinted:firefox` | Run CLI extractor |
 
 ## Dependencies
@@ -171,7 +173,8 @@ C:\Users\<username>\AppData\Roaming\Vinbot Authenticator\vinted-auth\
 - `electron` - Desktop framework
 - `electron-builder` - Packaging
 - `typescript` - Type safety
-- `react-scripts` - React tooling
+- `vite` - Window dev server and build
+- `vitest` - Tests
 
 ## Security Considerations
 

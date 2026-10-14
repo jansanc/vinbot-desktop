@@ -4,7 +4,9 @@
     <meta charset="utf-8" />
     <!-- The page loads nothing but its own files and talks to the API only
          through main (see preload.js). ws://localhost:3002 is the dev
-         server's live reload; there is nothing listening there in a build. -->
+         server's live reload; there is nothing listening there in a build.
+         In dev, vite.config.ts also allows the inline script React's hot
+         reload needs. -->
     <meta
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' ws://localhost:3002; object-src 'none'; base-uri 'none'; form-action 'none'"
@@ -16,13 +18,13 @@
       content="Vinbot desktop for session authentication"
     />
     <title>Vinbot Authenticator</title>
-    <link rel="icon" type="image/png" href="%PUBLIC_URL%/favicon.png" />
-    <link rel="stylesheet" href="%PUBLIC_URL%/output.css" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
   </head>
   <body>
     <!-- Before React mounts: the saved theme (ThemeContext), so a light-theme
          user never sees the dark default flash. -->
-    <script src="%PUBLIC_URL%/theme-init.js"></script>
+    <script src="/theme-init.js"></script>
     <div id="root"></div>
+    <script type="module" src="/src/index.tsx"></script>
   </body>
 </html>

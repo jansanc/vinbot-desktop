@@ -18,8 +18,7 @@ You're seeing "Electron API not available" when loading the app. This means **Re
 
 If you're running:
 ```bash
-npm run react-start        # ❌ WRONG - Browser only
-PORT=3002 npm run react-start  # ❌ WRONG - Browser only
+npm run renderer:dev        # ❌ WRONG - Browser only
 npm run start              # ✅ CORRECT if run from repo root
 ```
 
@@ -228,7 +227,6 @@ npm install
 
 # Rebuild
 npm run compile:main
-npm run css:build
 
 # Start
 npm start
@@ -256,10 +254,10 @@ npx tsc --version
 |---------|-------------|----------|
 | `npm start` | Full Electron app ✅ | **Always use this** |
 | `npm run electron-dev` | Same as `npm start` ✅ | Alternative |
-| `npm run react-start` | React browser only ❌ | Don't use for this app |
+| `npm run renderer:dev` | React browser only ❌ | Don't use for this app |
 | `npm run build` | Production build | For deployment |
 
-**TL;DR: Use `npm start`, not `npm run react-start`**
+**TL;DR: Use `npm start`, not `npm run renderer:dev`**
 
 ---
 

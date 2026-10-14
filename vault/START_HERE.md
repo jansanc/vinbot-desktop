@@ -50,7 +50,7 @@ And in the Electron window:
 
 ### ❌ "Electron API not available"
 
-**Problem**: You ran `npm run react-start` instead of `npm start`
+**Problem**: You ran `npm run renderer:dev` instead of `npm start`
 
 **Fix**:
 ```bash
@@ -135,13 +135,10 @@ If `npm start` doesn't work, try running components separately:
 # Terminal 1: Compile TypeScript (watch mode)
 npm run compile:main
 
-# Terminal 2: Watch CSS
-npm run css:watch
+# Terminal 2: Start the Vite dev server (port 3002, styles included)
+npm run renderer:dev
 
-# Terminal 3: Start React dev server
-PORT=3002 npm run react-start
-
-# Terminal 4: Once React starts, launch Electron
+# Terminal 3: Once Vite is up, launch Electron
 ELECTRON_DEV=true npx electron .
 ```
 

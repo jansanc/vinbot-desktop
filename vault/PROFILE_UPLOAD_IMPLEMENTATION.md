@@ -321,7 +321,7 @@ The app logs to the browser console:
 
 **"Electron API not available"**
 - Make sure you're running with `npm start`, not opening in browser
-- Run: `npm start` (not `npm run react-start`)
+- Run: `npm start` (not `npm run renderer:dev`)
 
 **"Profile not found"**
 - Verify profile exists on system

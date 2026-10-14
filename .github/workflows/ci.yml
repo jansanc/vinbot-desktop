@@ -1,0 +1,29 @@
+# Typecheck, test and build on every push and pull request. Installers are
+# built by build.yml, on a version tag or by hand.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Electron 44's Node; the tests also need its built-in node:sqlite
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      # The app never needs Electron's binary here
+      - run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run compile:main
+      - run: npm run renderer:build

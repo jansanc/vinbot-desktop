@@ -46,3 +46,6 @@ src/modules/vinted/auth/auth-vinted.json
 
 # Packaged installers
 /dist-app
+
+# Written by the Tailwind CLI watcher of the old (pre-Vite) dev setup
+/public/output.css

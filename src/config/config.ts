@@ -4,7 +4,7 @@ const memoryStore = new Map<string, string>();
 /**
  * API base URL, resolved for BOTH processes.
  *
- * CRA inlines REACT_APP_* only into the renderer bundle, and a packaged app
+ * Vite inlines REACT_APP_* only into the renderer bundle (vite.config.mts), and a packaged app
  * never loads .env in the main process — so main used to fall back to
  * localhost:3001 in production and every request from there failed. Now that
  * the main process issues all API calls, the fallback must be the production

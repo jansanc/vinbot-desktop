@@ -2,7 +2,7 @@
 
 /* The design of the web app (vinted-api/web/app/globals.css): same palette,
    type, radii and shadows, so the desktop app reads as the same product.
-   Compiled by the Tailwind CLI to public/output.css (npm run css:build). */
+   Built by Vite (@tailwindcss/vite); imported by src/index.tsx. */
 
 @custom-variant dark (&:is(.dark *));
 
@@ -13,7 +13,7 @@
   font-style: normal;
   font-display: swap;
   font-weight: 100 900;
-  src: url("fonts/inter-latin-opsz.woff2") format("woff2-variations");
+  src: url("/fonts/inter-latin-opsz.woff2") format("woff2-variations");
 }
 
 @theme inline {

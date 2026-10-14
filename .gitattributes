@@ -1,0 +1,7 @@
+# The repository stores LF; checkouts get the platform's line endings. Without
+# this, a commit from a machine without core.autocrlf could store CRLF.
+* text=auto
+
+*.png binary
+*.ico binary
+*.woff2 binary

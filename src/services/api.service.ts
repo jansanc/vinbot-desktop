@@ -374,7 +374,8 @@ export class ApiService {
         {
           method: "POST",
           headers,
-          body: new Blob([binaryData], { type: "application/gzip" }),
+          // Never SharedArrayBuffer-backed: it comes from a file or a Blob
+          body: new Blob([binaryData as Uint8Array<ArrayBuffer>], { type: "application/gzip" }),
         }
       );
 

@@ -1,7 +1,7 @@
 import path from "path";
 import os from "os";
 import { execFile, spawn, spawnSync, ChildProcess } from "child_process";
-import { existsSync, mkdirSync, writeFileSync, rmSync } from "fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "fs";
 import {
   hasCompleteVintedLogin,
   readVintedCookies,
@@ -94,10 +94,63 @@ function run(argv) {
   return app.isNil() ? false : app.terminate;
 }`;
 
+/**
+ * Firefox's startup cache, kept between logins.
+ *
+ * Every login runs in a new, empty profile, and on a new profile Firefox
+ * first compiles its own interface code into startupCache (~19 MB): measured,
+ * Vinted's page was usable after ~3.2s instead of ~1.7s with the cache in
+ * place. It holds nothing of the user's - no cookies, history or pages - so
+ * it is the one part of a finished profile worth keeping. compatibility.ini
+ * goes with it: Firefox throws the cache away by itself when it was built by
+ * another version.
+ */
+const WARM_STARTUP_DIR = path.join(os.tmpdir(), "vinbot-firefox-startup");
+const WARM_STARTUP_FILES = ["startupCache", "compatibility.ini"];
+
+/** Copy the kept startup cache into a new profile, if there is one. */
+function restoreWarmStartup(profileDir: string): void {
+  if (!WARM_STARTUP_FILES.every((f) => existsSync(path.join(WARM_STARTUP_DIR, f)))) return;
+  try {
+    for (const f of WARM_STARTUP_FILES) {
+      cpSync(path.join(WARM_STARTUP_DIR, f), path.join(profileDir, f), { recursive: true });
+    }
+  } catch (e) {
+    // Only slower: Firefox builds its own
+    console.warn(`[InteractiveLogin] Could not reuse Firefox's startup cache: ${e}`);
+  }
+}
+
+/**
+ * Keep a closed profile's startup cache for the next login, unless the kept
+ * one is already from this Firefox version (same compatibility.ini).
+ */
+function saveWarmStartup(profileDir: string): void {
+  const ini = path.join(profileDir, "compatibility.ini");
+  const cache = path.join(profileDir, "startupCache");
+  if (!existsSync(ini) || !existsSync(cache)) return;
+  try {
+    const kept = path.join(WARM_STARTUP_DIR, "compatibility.ini");
+    if (existsSync(kept) && readFileSync(kept, "utf8") === readFileSync(ini, "utf8")) return;
+
+    // Built aside and swapped in, so a failure never leaves half a cache
+    const staging = `${WARM_STARTUP_DIR}.${process.pid}.tmp`;
+    rmSync(staging, { recursive: true, force: true });
+    for (const f of WARM_STARTUP_FILES) cpSync(path.join(profileDir, f), path.join(staging, f), { recursive: true });
+    rmSync(WARM_STARTUP_DIR, { recursive: true, force: true });
+    renameSync(staging, WARM_STARTUP_DIR);
+    console.log(`[InteractiveLogin] Kept Firefox's startup cache for the next login`);
+  } catch (e) {
+    console.warn(`[InteractiveLogin] Could not keep Firefox's startup cache: ${e}`);
+  }
+}
+
 export class InteractiveSessionExtractor {
   private tempProfileDir: string | null = null;
   /** Set while the login window is open: closes it and ends the login unsaved. */
   private cancelLogin: (() => void) | null = null;
+  /** Windows: the login's Firefox browser process, once found (see findWindowsBrowserPids). */
+  private windowsBrowserPids: string[] = [];
 
   /** Close the login window without saving. Nothing happens once Firefox has closed. */
   cancel(): void {
@@ -127,12 +180,16 @@ export class InteractiveSessionExtractor {
         inBundle("/Applications/Firefox.app"),
         inBundle(path.join(os.homedir(), "Applications", "Firefox.app"))
       );
-      // Anywhere else Spotlight knows of (a renamed app, another folder)
-      const found = spawnSync("mdfind", ["kMDItemCFBundleIdentifier == 'org.mozilla.firefox'"], {
-        encoding: "utf8",
-        timeout: 5000,
-      });
-      for (const app of (found.stdout || "").split("\n").filter(Boolean)) paths.push(inBundle(app));
+      // Anywhere else Spotlight knows of (a renamed app, another folder). Only
+      // when it isn't in Applications: the search blocks the main process,
+      // freezing the app's window, for up to the 5s timeout.
+      if (!paths.some((p) => existsSync(p))) {
+        const found = spawnSync("mdfind", ["kMDItemCFBundleIdentifier == 'org.mozilla.firefox'"], {
+          encoding: "utf8",
+          timeout: 5000,
+        });
+        for (const app of (found.stdout || "").split("\n").filter(Boolean)) paths.push(inBundle(app));
+      }
     } else {
       paths.push("/usr/bin/firefox", "/usr/local/bin/firefox", "/snap/bin/firefox");
     }
@@ -319,6 +376,40 @@ export class InteractiveSessionExtractor {
     });
   }
 
+  /** Run a command without blocking the main process (and so the app's window); whether it succeeded. */
+  private run(command: string, args: string[]): Promise<boolean> {
+    return new Promise((resolve) => {
+      execFile(command, args, { timeout: 15000, windowsHide: true }, (err) => resolve(!err));
+    });
+  }
+
+  /**
+   * Windows: find the Firefox browser process for this login's profile in the
+   * background, so closing it later is a quick taskkill (see terminateBrowser).
+   * Retried while Firefox starts up; content processes (-contentproc) and the
+   * launcher are left out.
+   */
+  private findWindowsBrowserPids(launcherPid: number, profilePath: string, hasExited: () => boolean): void {
+    const script =
+      `Get-CimInstance Win32_Process -Filter "Name='firefox.exe'" | ` +
+      `Where-Object { $_.CommandLine -like '*${profilePath.replace(/'/g, "''")}*' -and $_.CommandLine -notlike '*-contentproc*' } | ` +
+      `ForEach-Object { $_.ProcessId }`;
+    void (async () => {
+      for (let attempt = 0; attempt < 10 && !hasExited(); attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        const pids = await new Promise<string[]>((resolve) =>
+          execFile("powershell", ["-NoProfile", "-NonInteractive", "-Command", script], { timeout: 15000, windowsHide: true }, (err, out) =>
+            resolve(err ? [] : String(out).split(/\s+/).filter((p) => p && p !== String(launcherPid)))
+          )
+        );
+        if (pids.length) {
+          this.windowsBrowserPids = pids;
+          return;
+        }
+      }
+    })();
+  }
+
   /** Run a JXA script with arguments: its output, or null if osascript failed. */
   private runJxa(script: string, ...args: string[]): Promise<string | null> {
     return new Promise((resolve) => {
@@ -402,15 +493,23 @@ export class InteractiveSessionExtractor {
     }
 
     if (process.platform === "win32") {
-      // Close the window the way the user would. taskkill without /F doesn't
-      // do this: Firefox's processes refuse it ("can only be terminated
-      // forcefully"). The browser process is the one whose command line names
-      // this login's temp profile.
-      const script =
-        `Get-CimInstance Win32_Process -Filter "Name='firefox.exe'" | ` +
-        `Where-Object { $_.CommandLine -like '*${profilePath.replace(/'/g, "''")}*' } | ` +
-        `ForEach-Object { (Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue).CloseMainWindow() } | Out-Null`;
-      spawnSync("powershell", ["-NoProfile", "-NonInteractive", "-Command", script], { stdio: "ignore" });
+      // Close the window the way the user would, so Firefox shuts down cleanly
+      // and writes everything to the profile. taskkill without /F does that,
+      // but only to the browser process itself (the launcher, browserProc,
+      // refuses: it has no window), found while the user was logging in.
+      // Until then, PowerShell finds and closes it: ~1.6s, most of it starting
+      // PowerShell, which is why it no longer runs on every close.
+      const browserPids = this.windowsBrowserPids;
+      const closedByPid =
+        browserPids.length > 0 &&
+        (await Promise.all(browserPids.map((p) => this.run("taskkill", ["/pid", p])))).some((ok) => ok);
+      if (!closedByPid) {
+        const script =
+          `Get-CimInstance Win32_Process -Filter "Name='firefox.exe'" | ` +
+          `Where-Object { $_.CommandLine -like '*${profilePath.replace(/'/g, "''")}*' } | ` +
+          `ForEach-Object { (Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue).CloseMainWindow() } | Out-Null`;
+        await this.run("powershell", ["-NoProfile", "-NonInteractive", "-Command", script]);
+      }
 
       const graceMs = 10000;
       if (await this.waitForExit(hasExited, graceMs)) return;
@@ -446,7 +545,7 @@ export class InteractiveSessionExtractor {
   async interactiveLogin(options: InteractiveLoginOptions): Promise<InteractiveLoginResult> {
     const { url, timeout = 300, onStatus } = options;
 
-        console.log(`[InteractiveLogin] URL: ${url}, Timeout: ${timeout}s`);
+    console.log(`[InteractiveLogin] URL: ${url}, Timeout: ${timeout}s`);
 
     // Create temporary profile directory
     const tempDir = os.tmpdir();
@@ -463,6 +562,7 @@ export class InteractiveSessionExtractor {
       // Phase 1: Launch Firefox for login
       console.log(`[InteractiveLogin] Phase 1: Launching Firefox for interactive login...`);
       this.prepareFirefoxProfile(this.tempProfileDir);
+      restoreWarmStartup(this.tempProfileDir);
       const launchedProfileDir = this.tempProfileDir;
       const browserProc = this.launchFirefox(browserPath, launchedProfileDir, url);
       onStatus?.("waiting-for-login");
@@ -470,6 +570,9 @@ export class InteractiveSessionExtractor {
       let closed = false;
       if (process.platform === "darwin" && browserProc.pid) {
         this.watchForClosedMacWindow(browserProc.pid, () => closed);
+      }
+      if (process.platform === "win32" && browserProc.pid) {
+        this.findWindowsBrowserPids(browserProc.pid, launchedProfileDir, () => closed);
       }
 
       // Who closed the window: the user (null), or this app for a reason
@@ -512,6 +615,8 @@ export class InteractiveSessionExtractor {
 
       await waitForClose;
       this.cancelLogin = null;
+      // However the login ended, Firefox has now written its startup cache
+      saveWarmStartup(launchedProfileDir);
 
       const loginDuration = Date.now() - loginStartTime;
       console.log(

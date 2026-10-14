@@ -169,6 +169,9 @@ export async function readVintedCookies(profilePath: string): Promise<VintedCook
       };
     });
   } catch (e) {
+    // Right after launch the file exists before Firefox has created its
+    // table: nothing to read yet, and nothing wrong
+    if (/no such table/i.test(String(e))) return null;
     // A page torn mid-write while Firefox is running: the next read will do
     console.warn(`[FirefoxCookies] Could not read Vinted cookies: ${e}`);
     return null;

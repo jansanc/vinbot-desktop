@@ -21,8 +21,9 @@
     "extract:vinted:firefox": "ts-node src/cli/vinted-firefox.ts",
     "clean": "node -e \"for (const d of ['dist','build','dist-app']) require('fs').rmSync(d,{recursive:true,force:true})\"",
     "dist": "npm run electron-build",
-    "dist:win": "npm run electron-build -- --win -c.electronDist=node_modules/electron/dist",
-    "dist:mac": "npm run electron-build -- --mac"
+    "dist:win": "npm run electron:download && npm run electron-build -- --win -c.electronDist=node_modules/electron/dist",
+    "dist:mac": "npm run electron-build -- --mac",
+    "electron:download": "node node_modules/electron/install.js"
   },
   "dependencies": {
     "@radix-ui/react-dropdown-menu": "^2.2.1",

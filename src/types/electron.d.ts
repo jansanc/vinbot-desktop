@@ -40,6 +40,8 @@ declare global {
       };
       // Typed loosely; the flows call these through (window as any).
       interactiveLogin: (options: Record<string, unknown>) => Promise<any>;
+      findFirefoxSessions: () => Promise<any>;
+      importFirefoxSession: (options: Record<string, unknown>) => Promise<any>;
       onInteractiveLoginProgress: (callback: (data: any) => void) => unknown;
       offInteractiveLoginProgress: (listener: unknown) => void;
       onInteractiveLoginError: (callback: (data: any) => void) => unknown;

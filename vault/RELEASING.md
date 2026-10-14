@@ -12,10 +12,11 @@ the OS shows as the app version.
 the macOS app, so `.github/workflows/build.yml` builds each platform on its
 own runner.
 
-- Actions > **Build installers** > **Run workflow** with no tag, then
-  download the installers from the run's artifacts (a test build), or
-- publish a GitHub Release: the installers are built from its tag and
-  attached to it a few minutes later (see Updates below).
+- Actions > **Build installers** > **Run workflow**, then download the
+  installers from the run's artifacts, or
+- push a tag matching the version (`git tag v1.0.1 && git push origin v1.0.1`)
+  to also get a **draft** GitHub Release with everything attached. Check it,
+  then publish it.
 
 **Locally:** `npm ci`, then
 
@@ -52,23 +53,16 @@ No setup is needed: the release job writes with the workflow's own
 **Shipping a version**
 
 1. Bump `version` in `package.json`. Updates only go forward: the new version
-   must be higher than what users have. Commit and push.
-2. Test first: Actions > **Build installers** > **Run workflow** with no tag,
-   and try the installers from the run's artifacts. Publishing in the next
-   step goes straight to users; there is no draft stage.
-3. Releases > **Draft a new release**, with a new tag for that commit
-   (e.g. `1.1.0`), then **Publish**. CI builds both platforms and attaches
-   the installers, `latest.yml`, `latest-mac.yml` and the blockmaps a few
-   minutes later.
-4. That is the rollout. Once `latest.yml` is attached, every installed copy
-   picks the version up at its next launch, or within 4 hours while running.
-   A copy that checks in the minutes before the files are there finds no
-   `latest.yml`, logs it, and gets the update at its next check.
+   must be higher than what users have.
+2. Commit, then `git tag v<version> && git push origin v<version>`.
+3. CI builds both platforms and creates a **draft** release in this repo
+   with the installers, `latest.yml`, `latest-mac.yml` and the blockmaps.
+4. Test the installers, then **publish** the draft. Publishing is the
+   rollout: every installed copy picks it up within about 4 hours, or at its
+   next launch.
 
 To pull a bad release, delete it (or turn it back into a draft) before more
-users get it, then ship a fixed, higher version. Apps never downgrade. Don't
-replace files in a published release: copies that already read its
-`latest.yml` would reject the new installer's checksum.
+users get it, then ship a fixed, higher version. Apps never downgrade.
 
 **Limits**
 
@@ -144,9 +138,9 @@ lives in `devDependencies`. A new package used by the main process must go in
 
 ## Smoke test before sending
 
-On a clean machine of each OS: install, sign in (email and Google), and run
-one "Open Firefox and log in" flow end to end. On macOS, check that closing
-the Firefox window (not ⌘Q) saves the session.
+On a clean machine of each OS: install, log in, import a Firefox session,
+and run one "Log in with Firefox" flow end to end. On macOS, check that
+closing the Firefox window (not ⌘Q) saves the session.
 
 ## Troubleshooting
 

@@ -18,7 +18,7 @@
     "electron-build": "npm run clean && npm run compile:main && npm run react-build && electron-builder --publish never",
     "build": "npm run react-build",
     "start": "npm run electron-dev",
-    "extract:vinted:firefox": "ts-node src/cli/vinted-firefox.ts",
+    "extract:vinted:firefox": "ts-node cli/vinted-firefox.ts",
     "clean": "node -e \"for (const d of ['dist','build','dist-app']) require('fs').rmSync(d,{recursive:true,force:true})\"",
     "dist": "npm run electron-build",
     "dist:win": "npm run electron-build -- --win -c.electronDist=node_modules/electron/dist",

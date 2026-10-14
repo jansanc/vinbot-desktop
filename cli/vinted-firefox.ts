@@ -3,20 +3,15 @@
 // Load environment variables early - must be before any other imports
 import * as dotenv from "dotenv";
 import path from "path";
-import { fileURLToPath } from "url";
 import os from "os";
 import { execSync } from "child_process";
-import { createRequire } from "module";
 import readline from "readline";
 import { readFileSync, existsSync, readdirSync, writeFileSync, mkdirSync } from "fs";
 
-// Setup paths and load env
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const projectRoot = path.join(__dirname, "..", "..");
+// Setup paths and load env (this file lives in <project>/cli)
+const projectRoot = path.join(__dirname, "..");
 const envPath = path.join(projectRoot, ".env");
 dotenv.config({ path: envPath });
-
-const require = createRequire(import.meta.url);
 
 /**
  * Firefox extraction script for Vinted automation
@@ -31,7 +26,7 @@ const require = createRequire(import.meta.url);
  * Usage:
  *   npm run extract:vinted:firefox
  *   or
- *   npx ts-node src/cli/extract-vinted-firefox.ts
+ *   npx ts-node cli/vinted-firefox.ts
  *
  * No need to launch Firefox - reads directly from profile directory.
  */
@@ -677,7 +672,7 @@ async function extractAll() {
 
         // Dynamically import to avoid loading config at startup
         const { saveFirefoxExtractionData } = await import(
-          "../modules/vinted/auth/vintedAuth.service.ts"
+          "../src/modules/vinted/auth/vintedAuth.service"
         );
         await saveFirefoxExtractionData(vintedEmail, fingerprint, auth, userEmail, vintedMemberId);
         logger.success(`   ✓ Fingerprint stored (${Object.keys(fingerprint).length} properties)`);

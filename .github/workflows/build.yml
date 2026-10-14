@@ -34,6 +34,12 @@ jobs:
 
       - run: npm ci
 
+      # Electron 44 fetches its binary on first run, not on install, and
+      # dist:win packages the copy in node_modules/electron/dist. Done here
+      # too (not only in dist:win) so older tags still build.
+      - name: Download Electron
+        run: node node_modules/electron/install.js
+
       - name: Build (Windows)
         if: runner.os == 'Windows'
         run: npm run dist:win

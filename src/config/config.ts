@@ -47,7 +47,7 @@ export const config = {
     },
   },
   turnstile: {
-    siteKey: process.env.VINBOT_TURNSTILE_SITE_KEY ?? PRODUCTION_TURNSTILE_SITE_KEY,
+    siteKey: process.env.VINBOT_TURNSTILE_SITE_KEY || PRODUCTION_TURNSTILE_SITE_KEY,
     // Where the check page appears to live (see src/main/turnstile.ts). Its
     // hostname must be one the site key allows in the Cloudflare dashboard.
     pageUrl:

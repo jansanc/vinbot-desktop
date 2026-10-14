@@ -123,7 +123,14 @@ local build (CI has no `.env` and uses the defaults).
 Only `public/{electron,preload}.js`, the renderer in `build/` (without source
 maps), the compiled main process in `dist/`, the runtime dependencies
 (`sql.js`, `electron-updater`), and Firefox (below). Everything the renderer
-imports is bundled by Vite, so it lives in `devDependencies`. A new package used by the main process must go in
+imports is bundled by Vite, so it lives in `devDependencies`.
+
+The installed app can't be run as anything but itself: Electron fuses
+(`build.electronFuses`) switch off `ELECTRON_RUN_AS_NODE`, `NODE_OPTIONS` and
+`--inspect`, and make it load only its own `app.asar`, checked against a hash
+in the executable (a modified archive won't start). `public/electron.js`
+refuses `--remote-debugging-port/-pipe` in a packaged build. Debugging an
+installed build therefore means building one without these. A new package used by the main process must go in
 `dependencies`, or the installed app fails to load it.
 
 ## Firefox

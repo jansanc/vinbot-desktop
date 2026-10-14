@@ -22,6 +22,16 @@ const { pathToFileURL } = require("url");
 // with the full electronAPI, so an env var must not be able to switch it on.
 const isDev = !app.isPackaged && process.env.ELECTRON_DEV === "true";
 
+// An installed build can't be driven from outside. Running it as Node.js,
+// NODE_OPTIONS and --inspect are switched off in the binary itself (fuses in
+// package.json's build.electronFuses). Chromium's remote debugging has no fuse
+// and would let another program control the window, electronAPI included, so
+// the app refuses to start with it.
+if (app.isPackaged && process.argv.some((arg) => /^--remote-debugging-(port|pipe)\b/.test(arg))) {
+  console.error("[Electron] Remote debugging is not allowed in this build");
+  process.exit(1);
+}
+
 const DEV_URL = "http://localhost:3002/";
 const startUrl = isDev
   ? DEV_URL

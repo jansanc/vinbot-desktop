@@ -71,6 +71,14 @@
       "fr"
     ],
     "afterPack": "build-resources/after-pack.js",
+    "electronFuses": {
+      "runAsNode": false,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "onlyLoadAppFromAsar": true,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "resetAdHocDarwinSignature": true
+    },
     "files": [
       "public/electron.js",
       "public/preload.js",

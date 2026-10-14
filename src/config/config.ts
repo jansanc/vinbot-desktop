@@ -58,8 +58,15 @@ export const config = {
     baseUrl: process.env.REACT_APP_WEB_URL || "https://start.vinbot.app",
   },
   vinted: {
+    // The Vinted site sessions are captured on. It must be the site the
+    // backend drives (VINTED_BASE_URL in vinted-api): a session from another
+    // Vinted country doesn't work there.
     baseUrl:
       process.env.REACT_APP_VINTED_BASE_URL || "https://www.vinted.es",
+    // Where the login window opens: Vinted's sign-up/log-in chooser
+    loginPath: "/member/signup/select_type?ref_url=%2F",
+    // How long the user has to log in before the window is closed unsaved
+    loginTimeoutSeconds: 5 * 60,
   },
   storage: {
     keys: {

@@ -1,15 +1,41 @@
 import path from "path";
 import os from "os";
 import { execFile, spawn, spawnSync, ChildProcess } from "child_process";
-import { existsSync, mkdirSync, writeFileSync, rmSync, statSync, readFileSync } from "fs";
+import { existsSync, mkdirSync, writeFileSync, rmSync, statSync } from "fs";
 import * as tar from "tar";
 import { archiveNamePart, includeInProfileArchive } from "../profile/profileArchive";
+import {
+  hasCompleteVintedLogin,
+  readVintedCookies,
+  vintedLoginState,
+  type VintedCookie,
+  type VintedLoginState,
+} from "./firefoxCookies";
+
+export type { VintedCookie } from "./firefoxCookies";
+
+/** Where the login is at, for the progress the user sees. */
+export type LoginStatus = "waiting-for-login" | "logged-in" | "saving";
 
 export interface InteractiveLoginOptions {
   url: string;
   profileName: string;
+  /** Seconds the user has to log in. */
   timeout?: number;
-  headless?: boolean;
+  onStatus?: (status: LoginStatus) => void;
+}
+
+/**
+ * Why a login ended without a session, for the window to explain in the
+ * user's language. Anything else is reported with its (English) message.
+ */
+export type LoginFlowErrorCode = "LOGIN_TIMEOUT" | "LOGIN_CANCELLED" | "FIREFOX_NOT_FOUND";
+
+export class LoginFlowError extends Error {
+  constructor(public readonly code: LoginFlowErrorCode, message: string) {
+    super(message);
+    this.name = "LoginFlowError";
+  }
 }
 
 export interface InteractiveLoginResult {
@@ -25,25 +51,12 @@ export interface InteractiveLoginResult {
    * What the Vinted cookies said when the window closed. Informational only:
    * the profile is archived and uploaded whatever this says.
    */
-  vinted_login: "logged-in" | "anonymous" | "unknown";
+  vinted_login: VintedLoginState;
   /**
    * The Vinted cookies from the closed profile (see readVintedCookies), for
    * the backend's session row. Empty when they couldn't be read.
    */
   vinted_cookies: VintedCookie[];
-}
-
-/** A cookie in Playwright's storageState format, as the backend stores it. */
-export interface VintedCookie {
-  name: string;
-  value: string;
-  domain: string;
-  path: string;
-  /** Unix seconds. */
-  expires: number;
-  secure: boolean;
-  httpOnly: boolean;
-  sameSite: "Strict" | "Lax" | "None";
 }
 
 /** Size of the login window, in logical (DPI-scaled) pixels: a small window,
@@ -52,6 +65,16 @@ const LOGIN_WINDOW_SIZE = { width: 520, height: 720 };
 
 /** How often the macOS window watch checks whether the login window is still open. */
 const MAC_WINDOW_POLL_MS = 1000;
+
+/** How often the profile's cookies are checked for a finished login. */
+const LOGIN_POLL_MS = 1500;
+
+/**
+ * How long the window stays open once the login is seen. Vinted sets the
+ * session tokens before it finishes redirecting, and the page may still be
+ * storing the rest of what a logged-in visit has.
+ */
+const LOGGED_IN_SETTLE_MS = 2500;
 
 /**
  * JXA (osascript -l JavaScript): how many normal windows (layer 0) the process
@@ -83,6 +106,13 @@ function run(argv) {
 
 export class InteractiveSessionExtractor {
   private tempProfileDir: string | null = null;
+  /** Set while the login window is open: closes it and ends the login unsaved. */
+  private cancelLogin: (() => void) | null = null;
+
+  /** Close the login window without saving. Nothing happens once Firefox has closed. */
+  cancel(): void {
+    this.cancelLogin?.();
+  }
 
   /**
    * Find the Firefox executable. The interactive login only ever launches
@@ -123,7 +153,8 @@ export class InteractiveSessionExtractor {
       }
     }
 
-    throw new Error(
+    throw new LoginFlowError(
+      "FIREFOX_NOT_FOUND",
       process.platform === "darwin"
         ? "Could not find Firefox. Please install Firefox in your Applications folder and try again."
         : "Could not find Firefox. Please install Firefox and try again."
@@ -268,93 +299,6 @@ export class InteractiveSessionExtractor {
     rmSync(path.join(profilePath, "user.js"), { force: true });
     rmSync(path.join(profilePath, "xulstore.json"), { force: true });
     rmSync(path.join(profilePath, "chrome"), { recursive: true, force: true });
-  }
-
-  /**
-   * The Vinted cookies Firefox saved in the closed profile, in Playwright's
-   * cookie format - what the backend's browser engine bootstraps its own
-   * (Chromium) profile from, since it cannot open a Firefox profile.
-   *
-   * Firefox keeps cookies unencrypted in cookies.sqlite, so they can be sent
-   * as-is. Each cookie keeps the host Firefox stored it under: rewriting
-   * .www.vinted.X to .vinted.X leaves a copy that shadows the tokens Vinted
-   * rotates. Partitioned (third-party) cookies are left out.
-   *
-   * null when the cookies can't be read reliably: no cookies.sqlite, or recent
-   * writes still in cookies.sqlite-wal (sql.js reads the main file only).
-   */
-  private async readVintedCookies(profilePath: string): Promise<VintedCookie[] | null> {
-    const dbPath = path.join(profilePath, "cookies.sqlite");
-    const walPath = `${dbPath}-wal`;
-    if (!existsSync(dbPath)) return null;
-    if (existsSync(walPath) && statSync(walPath).size > 0) {
-      console.warn(`[InteractiveLogin] cookies.sqlite has un-checkpointed writes; not reading it`);
-      return null;
-    }
-
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const initSqlJs = require("sql.js");
-      const SQL = await initSqlJs();
-      const db = new SQL.Database(readFileSync(dbPath));
-      const rows = db.exec(
-        "SELECT name, value, host, path, expiry, isSecure, isHttpOnly, sameSite FROM moz_cookies " +
-          "WHERE host LIKE '%vinted.%' AND (originAttributes IS NULL OR originAttributes = '')"
-      );
-      db.close();
-
-      const sameSiteNames: Record<number, VintedCookie["sameSite"]> = { 0: "None", 1: "Lax", 2: "Strict" };
-      return (rows[0]?.values ?? []).map((row: unknown[]) => {
-        const [name, value, host, cookiePath, expiry, isSecure, isHttpOnly, sameSite] = row;
-        const secure = Number(isSecure) === 1;
-        const expiryNumber = Number(expiry);
-        // Chromium drops SameSite=None cookies that aren't Secure; Firefox
-        // treats those as Lax anyway.
-        let sameSiteName = sameSiteNames[Number(sameSite)] ?? "Lax";
-        if (sameSiteName === "None" && !secure) sameSiteName = "Lax";
-        return {
-          name: String(name),
-          value: String(value),
-          domain: String(host),
-          path: String(cookiePath || "/"),
-          // Firefox 15x stores expiry in milliseconds, older ones in seconds.
-          expires: expiryNumber > 1e11 ? Math.floor(expiryNumber / 1000) : expiryNumber,
-          secure,
-          httpOnly: Number(isHttpOnly) === 1,
-          sameSite: sameSiteName,
-        };
-      });
-    } catch (e) {
-      console.warn(`[InteractiveLogin] Could not read Vinted cookies: ${e}`);
-      return null;
-    }
-  }
-
-  /**
-   * Whether the saved cookies hold a logged-in Vinted session.
-   *
-   * Vinted hands every visitor access_token_web/refresh_token_web cookies, so
-   * their presence proves nothing. They are JWTs, though: an anonymous one
-   * has scope "public" and no subject; a logged-in one names the user.
-   */
-  private vintedLoginState(cookies: VintedCookie[] | null): "logged-in" | "anonymous" | "unknown" {
-    const tokens = (cookies ?? []).filter(
-      (c) => c.name === "refresh_token_web" || c.name === "access_token_web"
-    );
-    if (!tokens.length) return "unknown";
-
-    for (const token of tokens) {
-      try {
-        const claims = JSON.parse(Buffer.from(token.value.split(".")[1] ?? "", "base64url").toString("utf8"));
-        console.log(
-          `[InteractiveLogin] Vinted ${claims.purpose ?? "?"} token: scope=${claims.scope ?? "?"}, user=${claims.sub ? "yes" : "no"}`
-        );
-        if (claims.sub || (claims.scope && claims.scope !== "public")) return "logged-in";
-      } catch {
-        // Not a JWT we can read; judge by the others.
-      }
-    }
-    return "anonymous";
   }
 
   /**
@@ -506,15 +450,15 @@ export class InteractiveSessionExtractor {
   }
 
   /**
-   * Interactive login: Open browser for user login, then extract session
+   * Interactive login: open Firefox on Vinted, wait until the user has logged
+   * in, close Firefox, and archive the profile it left behind.
+   *
+   * The window closes by itself once the profile holds a logged-in session
+   * (see hasCompleteVintedLogin). The user can also close it themselves; that
+   * still saves the session, in case the login check ever misses one.
    */
   async interactiveLogin(options: InteractiveLoginOptions): Promise<InteractiveLoginResult> {
-    const {
-      url,
-      profileName,
-      timeout = 300,
-      headless = false,
-    } = options;
+    const { url, profileName, timeout = 300, onStatus } = options;
 
     console.log(`[InteractiveLogin] Starting interactive login for ${profileName}`);
     console.log(`[InteractiveLogin] URL: ${url}, Timeout: ${timeout}s`);
@@ -536,52 +480,73 @@ export class InteractiveSessionExtractor {
       this.prepareFirefoxProfile(this.tempProfileDir);
       const launchedProfileDir = this.tempProfileDir;
       const browserProc = this.launchFirefox(browserPath, launchedProfileDir, url);
+      onStatus?.("waiting-for-login");
 
       let closed = false;
       if (process.platform === "darwin" && browserProc.pid) {
         this.watchForClosedMacWindow(browserProc.pid, () => closed);
       }
 
-      // Wait for user to close browser or timeout
-      let timedOut = false;
-      const waitForClose = new Promise<void>((resolve) => {
-        // Cleared when the user closes the window, so it doesn't sit armed
-        // (holding this login's state) for the rest of the timeout.
-        const timer = setTimeout(async () => {
-          if (!closed) {
-            timedOut = true;
-            console.log(`[InteractiveLogin] Timeout reached (${timeout}s), terminating browser...`);
-            await this.terminateBrowser(browserProc, launchedProfileDir, () => closed);
-          }
-          resolve();
-        }, timeout * 1000);
+      // Who closed the window: the user (null), or this app for a reason
+      let closedBy: "login" | "timeout" | "cancel" | null = null;
+      const closeBrowser = (reason: NonNullable<typeof closedBy>) => {
+        if (closed || closedBy) return;
+        closedBy = reason;
+        console.log(`[InteractiveLogin] Closing Firefox (${reason})...`);
+        void this.terminateBrowser(browserProc, launchedProfileDir, () => closed);
+      };
 
+      const waitForClose = new Promise<void>((resolve) => {
+        // Cleared once the window closes, so it doesn't sit armed (holding
+        // this login's state) for the rest of the timeout.
+        const timer = setTimeout(() => closeBrowser("timeout"), timeout * 1000);
         browserProc.on("exit", () => {
           closed = true;
           clearTimeout(timer);
           resolve();
         });
       });
+      this.cancelLogin = () => closeBrowser("cancel");
+
+      // Close the window once the user is logged in. Reading the profile's
+      // cookies (not the page) is what proves the session is on disk, ready
+      // to be archived, before the window closes.
+      void (async () => {
+        while (!closed && !closedBy) {
+          await new Promise((resolve) => setTimeout(resolve, LOGIN_POLL_MS));
+          if (closed || closedBy) return;
+          if (!hasCompleteVintedLogin(await readVintedCookies(launchedProfileDir))) continue;
+
+          console.log(`[InteractiveLogin] Logged in to Vinted; closing Firefox shortly`);
+          onStatus?.("logged-in");
+          await new Promise((resolve) => setTimeout(resolve, LOGGED_IN_SETTLE_MS));
+          closeBrowser("login");
+          return;
+        }
+      })();
 
       await waitForClose;
+      this.cancelLogin = null;
 
       const loginDuration = Date.now() - loginStartTime;
       console.log(
         `[InteractiveLogin] Browser closed after ${(loginDuration / 1000).toFixed(1)}s ` +
-          (timedOut ? `(closed by the ${timeout}s timeout)` : `(closed by the user)`)
+          `(by ${closedBy ? `this app: ${closedBy}` : "the user"})`
       );
 
-      // Closing the window is how the user says "I'm logged in, save this".
-      // When the timeout closed it instead, nothing is archived, uploaded or
-      // linked; the temp profile is discarded in the finally below.
-      if (timedOut) {
+      // Nothing is archived, uploaded or linked after a timeout or cancel; the
+      // temp profile is discarded in the finally below.
+      if (closedBy === "cancel") {
+        throw new LoginFlowError("LOGIN_CANCELLED", "The login was cancelled, so nothing was saved.");
+      }
+      if (closedBy === "timeout") {
         const limit = timeout >= 60 ? `${Math.round(timeout / 60)} minutes` : `${timeout} seconds`;
-        throw new Error(
-          `Time ran out (${limit}) before you closed the login window, so nothing was saved. ` +
-            `Start again, log in, then close the window yourself to save the session. ` +
-            `You can allow more time under Advanced Options.`
+        throw new LoginFlowError(
+          "LOGIN_TIMEOUT",
+          `Time ran out (${limit}) before you logged in, so nothing was saved. Start again to log in.`
         );
       }
+      onStatus?.("saving");
 
       // Give OS time to release file locks
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -591,8 +556,8 @@ export class InteractiveSessionExtractor {
       // Recorded, never blocking. A check that stopped here would also throw
       // away the profile (cleaned up below), losing a real login if the check
       // were ever wrong - so the profile is always archived and uploaded.
-      const vintedCookies = await this.readVintedCookies(this.tempProfileDir);
-      const login = this.vintedLoginState(vintedCookies);
+      const vintedCookies = await readVintedCookies(this.tempProfileDir);
+      const login = vintedLoginState(vintedCookies);
       console.log(
         `[InteractiveLogin] Vinted login state when the window closed: ${login}`
       );
@@ -648,8 +613,10 @@ export class InteractiveSessionExtractor {
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       console.error(`[InteractiveLogin] ❌ Failed: ${msg}`);
+      if (error instanceof LoginFlowError) throw error;
       throw new Error(`Interactive login failed: ${msg}`);
     } finally {
+      this.cancelLogin = null;
       // Cleanup temp profile directory
       if (this.tempProfileDir && existsSync(this.tempProfileDir)) {
         try {

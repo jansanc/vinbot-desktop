@@ -9,6 +9,14 @@ declare global {
     | { state: "downloading"; version: string; percent: number }
     | { state: "ready"; version: string };
 
+  /** Mirrors LoginResponse in src/main/session/login.handlers.ts */
+  type InteractiveLoginResponse = {
+    success: boolean;
+    message: string;
+    session?: { profile_archive_size: number };
+    code?: "LOGIN_TIMEOUT" | "LOGIN_CANCELLED" | "FIREFOX_NOT_FOUND" | "SESSION_EXPIRED" | "LOGIN_IN_PROGRESS";
+  };
+
   interface Window {
     electronAPI: {
       // API calls proxied through the main process to bypass CORS.
@@ -38,12 +46,16 @@ declare global {
         install: () => Promise<{ ok: true } | { ok: false; reason: "not-ready" | "busy" }>;
         onStatus: (callback: (status: UpdateStatus) => void) => () => void;
       };
-      // Typed loosely; the flows call these through (window as any).
-      interactiveLogin: (options: Record<string, unknown>) => Promise<any>;
-      onInteractiveLoginProgress: (callback: (data: any) => void) => unknown;
-      offInteractiveLoginProgress: (listener: unknown) => void;
-      onInteractiveLoginError: (callback: (data: any) => void) => unknown;
-      offInteractiveLoginError: (listener: unknown) => void;
+      // The Vinted login window (src/main/session/login.handlers.ts)
+      interactiveLogin: (options: {
+        userEmail: string;
+        vintedEmail: string;
+        vintedMemberId?: string;
+      }) => Promise<InteractiveLoginResponse>;
+      cancelInteractiveLogin: () => Promise<{ ok: true }>;
+      onInteractiveLoginProgress: (
+        callback: (data: { step: string; message: string; timestamp: string }) => void
+      ) => () => void;
     };
   }
 }

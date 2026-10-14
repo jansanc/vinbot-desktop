@@ -43,23 +43,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
       return () => ipcRenderer.removeListener("updater:status", listener);
     },
   },
-  // Interactive login handler
+  // The Vinted login window (src/main/session/login.handlers.ts)
   interactiveLogin: (options) => ipcRenderer.invoke("vinted:interactiveLogin", options),
-  // Convenience methods for specific events
+  cancelInteractiveLogin: () => ipcRenderer.invoke("vinted:cancelInteractiveLogin"),
+  // Returns unsubscribe
   onInteractiveLoginProgress: (callback) => {
     const listener = (event, data) => callback(data);
     ipcRenderer.on("interactive-login-progress", listener);
-    return listener;
-  },
-  offInteractiveLoginProgress: (listener) => {
-    ipcRenderer.removeListener("interactive-login-progress", listener);
-  },
-  onInteractiveLoginError: (callback) => {
-    const listener = (event, data) => callback(data);
-    ipcRenderer.on("interactive-login-error", listener);
-    return listener;
-  },
-  offInteractiveLoginError: (listener) => {
-    ipcRenderer.removeListener("interactive-login-error", listener);
+    return () => ipcRenderer.removeListener("interactive-login-progress", listener);
   },
 });

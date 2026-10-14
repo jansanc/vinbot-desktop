@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
-import { AlertCircle, CheckCircle2, Loader2, ChevronDown, LogIn, Import, RefreshCw } from "lucide-react";
+import React, { useState, useEffect, useRef } from "react";
+import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
@@ -16,41 +16,7 @@ interface LoginProgress {
   timestamp: string;
 }
 
-/** A Firefox profile and its Vinted session, from vinted:findFirefoxSessions. */
-interface FirefoxProfileSession {
-  id: string;
-  name: string;
-  path: string;
-  isDefault: boolean;
-  session: {
-    state: "logged-in" | "anonymous" | "none";
-    /** One per Vinted site logged in to; each is a separate account. */
-    sites: Array<{ site: string; userId?: string; expiresAt?: number }>;
-    cookieCount: number;
-  };
-  error?: string;
-}
-
-/** One importable session: a Firefox profile and one Vinted site it's logged in to. */
-interface ImportChoice {
-  key: string;
-  profile: FirefoxProfileSession;
-  site?: { site: string; userId?: string; expiresAt?: number };
-}
-
-/** A row per logged-in site, or one disabled row for a profile with none. */
-function importChoices(profiles: FirefoxProfileSession[]): ImportChoice[] {
-  return profiles.flatMap((profile) => {
-    // `sites` is missing when the main process predates it (in development the
-    // renderer hot-reloads but main is only compiled on `npm start`).
-    const sites = profile.session?.sites ?? [];
-    return sites.length
-      ? sites.map((site) => ({ key: `${profile.path}|${site.site}`, profile, site }))
-      : [{ key: profile.path, profile }];
-  });
-}
-
-/** An imported session is a few KB, a login's profile several MB. */
+/** A login's profile is several MB; small ones still read in KB. */
 function formatSize(bytes: number): string {
   return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
@@ -58,8 +24,8 @@ function formatSize(bytes: number): string {
 /** macOS: closing Firefox's window doesn't quit it; main watches for that, but ⌘Q is the sure way. */
 const isMac = typeof navigator !== "undefined" && /Mac/i.test(navigator.userAgent);
 
-/** "login": open a fresh Firefox to log in. "import": reuse the user's own Firefox session. */
-type Mode = "login" | "import";
+/** How long to wait for the user to close Firefox after logging in. */
+const LOGIN_TIMEOUT_SECONDS = 5 * 60;
 
 interface InteractiveLoginFlowProps {
   userId?: string;
@@ -71,8 +37,6 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
   const { addError } = useError();
   const { t } = useI18n();
   const [url, setUrl] = useState("https://www.vinted.es/member/signup/select_type?ref_url=%2F");
-  const [profileName, setProfileName] = useState("");
-  const [timeout, setTimeout] = useState(5);
   const [userEmail, setUserEmail] = useState(initialUserId);
   const [vintedEmail, setVintedEmail] = useState("");
   const [vintedMemberId, setVintedMemberId] = useState("");
@@ -80,53 +44,12 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
   const [progress, setProgress] = useState<LoginProgress[]>([]);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
-  const [showAdvanced, setShowAdvanced] = useState(false);
   // A ref, not state: the IPC listeners are registered once, and state they
   // closed over would stay at its first value (false) forever.
   const hasErrorRef = useRef(false);
   const setHasError = (value: boolean) => {
     hasErrorRef.current = value;
   };
-  const [mode, setMode] = useState<Mode>("login");
-  const modeChosen = useRef(false);
-  const [firefoxProfiles, setFirefoxProfiles] = useState<FirefoxProfileSession[]>([]);
-  const [selectedChoiceKey, setSelectedChoiceKey] = useState("");
-  const [isScanning, setIsScanning] = useState(false);
-
-  const scanFirefoxProfiles = useCallback(async () => {
-    const electronAPI = (window as any).electronAPI;
-    if (!electronAPI?.findFirefoxSessions) return;
-    setIsScanning(true);
-    try {
-      const response = await electronAPI.findFirefoxSessions();
-      const profiles: FirefoxProfileSession[] = response?.profiles ?? [];
-      setFirefoxProfiles(profiles);
-      const loggedIn = importChoices(profiles).filter((c) => c.site);
-      setSelectedChoiceKey((current) =>
-        loggedIn.some((c) => c.key === current) ? current : loggedIn[0]?.key ?? ""
-      );
-      // Offer the import first when there's a session to import, unless the
-      // user already picked a mode themselves.
-      if (loggedIn.length && !modeChosen.current) setMode("import");
-    } catch (err) {
-      addError(err, "InteractiveLoginFlow.scanFirefoxProfiles");
-    } finally {
-      setIsScanning(false);
-    }
-  }, [addError]);
-
-  useEffect(() => {
-    scanFirefoxProfiles();
-  }, [scanFirefoxProfiles]);
-
-  const chooseMode = (next: Mode) => {
-    modeChosen.current = true;
-    setMode(next);
-    setError(null);
-  };
-
-  const choices = importChoices(firefoxProfiles);
-  const selectedChoice = choices.find((c) => c.key === selectedChoiceKey && c.site);
 
   useEffect(() => {
     const electronAPI = (window as any).electronAPI;
@@ -230,33 +153,15 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
 
       // No token here: main uploads with the session it holds, and reports an
       // expired one back through interactive-login-error / auth:unauthorized.
-      // Auto-generate profile name if not provided
-      const finalProfileName = profileName.trim() || `vinted_${Date.now()}`;
-
-      if (mode === "import" && !selectedChoice) {
-        throw new Error(t("session.chooseProfile"));
-      }
-
-      const response =
-        mode === "import"
-          ? await electronAPI.importFirefoxSession({
-              profilePath: selectedChoice!.profile.path,
-              site: selectedChoice!.site!.site,
-              profileName: finalProfileName,
-              userEmail: userEmail.trim(),
-              vintedEmail: vintedEmail.trim(),
-              vintedMemberId: vintedMemberId.trim() || undefined,
-              uploadToS3: true,
-            })
-          : await electronAPI.interactiveLogin({
-              url: url.trim(),
-              profileName: finalProfileName,
-              timeout: timeout * 60, // Convert minutes to seconds
-              userEmail: userEmail.trim(),
-              vintedEmail: vintedEmail.trim(),
-              vintedMemberId: vintedMemberId.trim() || undefined,
-              uploadToS3: true,
-            });
+      const response = await electronAPI.interactiveLogin({
+        url: url.trim(),
+        profileName: `vinted_${Date.now()}`,
+        timeout: LOGIN_TIMEOUT_SECONDS,
+        userEmail: userEmail.trim(),
+        vintedEmail: vintedEmail.trim(),
+        vintedMemberId: vintedMemberId.trim() || undefined,
+        uploadToS3: true,
+      });
 
       if (response.success) {
         setResult(response.session);
@@ -286,12 +191,11 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
     setResult(null);
     setError(null);
     setHasError(false);
-    setShowAdvanced(false);
   };
 
   // Main reports steps by name; known ones are shown in the app's language
   const getFriendlyMessage = (step: string, originalMessage: string): string => {
-    const known = ["START", "IMPORT_START", "BROWSER_LAUNCH", "WAITING_FOR_LOGIN", "EXTRACT_COMPLETE", "COMPRESS_START", "UPLOAD_START", "UPLOAD_SUCCESS"];
+    const known = ["START", "BROWSER_LAUNCH", "WAITING_FOR_LOGIN", "EXTRACT_COMPLETE", "COMPRESS_START", "UPLOAD_START", "UPLOAD_SUCCESS"];
     if (!known.includes(step)) return originalMessage;
     const key = step === "WAITING_FOR_LOGIN" && isMac ? "WAITING_FOR_LOGIN_MAC" : step;
     return t(`steps.${key}` as MessageKey);
@@ -304,9 +208,7 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
         <div className="mb-8">
           <h1 className="display text-[28px]">{t("session.title")}</h1>
           <p className="mt-2 max-w-xl text-[15px] leading-relaxed text-pretty text-muted-foreground">
-            {mode === "import"
-              ? t("session.introImport")
-              : t("session.introLogin", { closeHint: t(isMac ? "session.closeHintMac" : "session.closeHint") })}
+            {t("session.introLogin", { closeHint: t(isMac ? "session.closeHintMac" : "session.closeHint") })}
           </p>
         </div>
 
@@ -320,36 +222,6 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* Mode: fresh login, or reuse the session in the user's Firefox */}
-              <div
-                role="radiogroup"
-                aria-label={t("session.modeGroup")}
-                className="grid grid-cols-2 gap-1 rounded-lg border border-border bg-muted p-1"
-              >
-                {([
-                  { value: "login", label: t("session.modeLogin"), Icon: LogIn },
-                  { value: "import", label: t("session.modeImport"), Icon: Import },
-                ] as const).map(({ value, label, Icon }) => (
-                  <button
-                    key={value}
-                    type="button"
-                    role="radio"
-                    aria-checked={mode === value}
-                    onClick={() => chooseMode(value)}
-                    disabled={isLoading}
-                    className={`flex h-8 items-center justify-center gap-2 rounded-md px-3 text-[13px] font-medium transition-[background-color,color,box-shadow] duration-150 disabled:opacity-50 ${
-                      mode === value
-                        ? // In dark the card is darker than the track; the accent surface sits above it
-                          "bg-card text-foreground shadow-[var(--highlight),var(--shadow-xs)] dark:bg-accent"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    <Icon className="h-4 w-4 shrink-0" />
-                    <span>{label}</span>
-                  </button>
-                ))}
-              </div>
-
               {/* Error Alert */}
               {error && (
                 <Alert variant="destructive">
@@ -357,94 +229,6 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
                   <AlertTitle>{t("session.errorTitle")}</AlertTitle>
                   <AlertDescription>{error}</AlertDescription>
                 </Alert>
-              )}
-
-              {/* Firefox profile picker (import mode) */}
-              {mode === "import" && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label>{t("session.firefoxProfile")}</Label>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={scanFirefoxProfiles}
-                      disabled={isScanning || isLoading}
-                    >
-                      <RefreshCw className={isScanning ? "animate-spin" : ""} />
-                      <span>{t("session.refresh")}</span>
-                    </Button>
-                  </div>
-
-                  {firefoxProfiles.length === 0 ? (
-                    <p className="rounded-lg border border-dashed border-input/60 p-4 text-sm text-muted-foreground">
-                      {isScanning ? t("session.scanning") : t("session.noProfiles")}
-                    </p>
-                  ) : (
-                    <div role="radiogroup" aria-label={t("session.firefoxProfile")} className="space-y-2">
-                      {choices.map(({ key, profile, site }) => {
-                        const usable = !!site;
-                        const selected = key === selectedChoiceKey;
-                        return (
-                          <button
-                            key={key}
-                            type="button"
-                            role="radio"
-                            aria-checked={selected}
-                            disabled={!usable || isLoading}
-                            onClick={() => setSelectedChoiceKey(key)}
-                            className={`flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-[background-color,border-color] duration-150 disabled:cursor-not-allowed ${
-                              selected
-                                ? "border-primary/60 bg-primary/8"
-                                : "border-border bg-card hover:border-input/60 hover:bg-accent/60"
-                            } ${usable ? "" : "opacity-60"}`}
-                          >
-                            <span
-                              className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
-                                selected ? "border-primary" : "border-input"
-                              }`}
-                            >
-                              {selected && <span className="h-2 w-2 rounded-full bg-primary" />}
-                            </span>
-                            <span className="min-w-0 flex-1">
-                              <span className="flex flex-wrap items-center gap-2">
-                                <span className="truncate text-sm font-medium text-foreground">
-                                  {profile.name}
-                                </span>
-                                {profile.isDefault && (
-                                  <span className="rounded-full border border-border bg-secondary px-2 py-px text-[11px] font-medium text-muted-foreground">
-                                    {t("session.defaultProfile")}
-                                  </span>
-                                )}
-                              </span>
-                              <span
-                                className={`mt-0.5 block text-xs ${
-                                  usable ? "text-success" : "text-muted-foreground"
-                                }`}
-                              >
-                                {profile.error
-                                  ? t("session.profileUnreadable")
-                                  : !profile.session?.sites
-                                    ? t("session.needsRestart")
-                                    : usable
-                                    ? site!.userId
-                                      ? t("session.loggedInOnMember", { site: site!.site, member: site!.userId })
-                                      : t("session.loggedInOn", { site: site!.site })
-                                    : profile.session.state === "anonymous"
-                                      ? t("session.notLoggedIn")
-                                      : t("session.noSession")}
-                              </span>
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  <p className="text-xs leading-relaxed text-muted-foreground">
-                    {t("session.importHint")}
-                  </p>
-                </div>
               )}
 
               {/* Email Input - Main Required Field */}
@@ -487,75 +271,21 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
                   </div>
                 </div>
               )}
-
-              {/* Advanced Options */}
-              <div className="border-t border-border pt-4">
-                <button
-                  type="button"
-                  aria-expanded={showAdvanced}
-                  onClick={() => setShowAdvanced(!showAdvanced)}
-                  className="flex items-center gap-1.5 rounded-sm text-[13px] font-medium text-muted-foreground transition-colors hover:text-foreground"
-                >
-                  <ChevronDown
-                    className={`h-4 w-4 transition-transform duration-150 ${showAdvanced ? "rotate-180" : ""}`}
-                    aria-hidden
-                  />
-                  {t("session.advanced")}
-                </button>
-
-                {showAdvanced && (
-                  <div className="mt-4 space-y-4 rounded-lg border border-border bg-muted/60 p-4">
-                    {/* Timeout Input (only the login window waits) */}
-                    {mode === "login" && (
-                    <div className="grid gap-1.5">
-                      <Label htmlFor="timeout">{t("session.waitTime")}</Label>
-                      <Input
-                        id="timeout"
-                        type="number"
-                        value={timeout}
-                        onChange={(e) => setTimeout(Math.max(1, parseInt(e.target.value) || 5))}
-                        disabled={isLoading}
-                        min="1"
-                        max="60"
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        {t(isMac ? "session.waitHintMac" : "session.waitHint")}
-                      </p>
-                    </div>
-                    )}
-
-                    {/* Profile Name */}
-                    <div className="grid gap-1.5">
-                      <Label htmlFor="profileName">{t("session.sessionName")}</Label>
-                      <Input
-                        id="profileName"
-                        type="text"
-                        value={profileName}
-                        onChange={(e) => setProfileName(e.target.value)}
-                        disabled={isLoading}
-                        placeholder={t("session.sessionNamePlaceholder")}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
             </CardContent>
 
             {/* Footer with Button */}
             <CardFooter>
               <Button
                 onClick={handleStartLogin}
-                disabled={isLoading || !vintedEmail.trim() || (mode === "import" && !selectedChoice)}
+                disabled={isLoading || !vintedEmail.trim()}
                 size="lg"
                 className="w-full"
               >
                 {isLoading ? (
                   <>
                     <Loader2 className="animate-spin" aria-hidden />
-                    <span>{mode === "import" ? t("session.importing") : t("session.starting")}</span>
+                    <span>{t("session.starting")}</span>
                   </>
-                ) : mode === "import" ? (
-                  t("session.importButton")
                 ) : (
                   t("session.loginButton")
                 )}

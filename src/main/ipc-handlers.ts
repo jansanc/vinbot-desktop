@@ -1,15 +1,9 @@
 import { ipcMain, type IpcMainInvokeEvent } from "electron";
-import path from "path";
 import * as fs from "fs";
 import {
   InteractiveSessionExtractor,
   type InteractiveLoginResult,
 } from "../modules/vinted/session/interactiveSessionExtractor";
-import {
-  findFirefoxVintedSessions,
-  importFirefoxSession,
-  vintedSiteOf,
-} from "../modules/vinted/session/firefoxSessionImporter";
 import { SessionUploadService } from "../modules/vinted/session/sessionUpload.service";
 import { registerAuthHandlers, redactSession } from "./api/auth.handlers";
 import { markBusy, startUpdater } from "./updater";
@@ -674,120 +668,6 @@ function registerIPCHandlers() {
         success: false,
         message: errorMessage,
       };
-    } finally {
-      releaseBusy();
-      if (archivePath) {
-        try {
-          fs.rmSync(archivePath, { force: true });
-        } catch (e) {
-          console.warn(`[IPC] Could not delete profile archive ${archivePath}: ${e}`);
-        }
-      }
-    }
-  });
-
-  // Firefox profiles on this machine and the Vinted session each one holds,
-  // for importing a session the user already has instead of logging in again.
-  ipcMain.handle("vinted:findFirefoxSessions", async () => {
-    try {
-      const profiles = await findFirefoxVintedSessions();
-      console.log(
-        `[IPC] Firefox profiles: ${profiles.map((p) => `${p.name} (${p.session.sites.map((s) => s.site).join("+") || p.session.state})`).join(", ") || "none"}`
-      );
-      return { success: true, profiles };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error(`[IPC] Could not list Firefox profiles: ${message}`);
-      return { success: false, profiles: [], message };
-    }
-  });
-
-  // Import the Vinted session from one of the user's Firefox profiles, then
-  // upload and link it exactly as an interactive login would.
-  ipcMain.handle("vinted:importFirefoxSession", async (event, options: {
-    profilePath: string;
-    /** The Vinted site to import, e.g. "vinted.es" (see importFirefoxSession). */
-    site?: string;
-    profileName: string;
-    userEmail?: string;
-    vintedEmail?: string;
-    vintedMemberId?: string;
-    accessToken?: string;
-    uploadToS3?: boolean;
-  }) => {
-    let archivePath: string | undefined;
-    // "Restart to update" waits until this is done
-    const releaseBusy = markBusy();
-    const sendProgress: ProgressSender = (step, message) => {
-      console.log(`[IPC] ${step}: ${message}`);
-      event.sender.send("interactive-login-progress", {
-        step,
-        message,
-        timestamp: new Date().toISOString(),
-      });
-    };
-
-    try {
-      const { profilePath, profileName, userEmail, vintedEmail, accessToken, uploadToS3 = false } = options;
-
-      if (!hasAccessToken(accessToken)) {
-        event.sender.send("interactive-login-error", {
-          error: "Session expired. Please log in again.",
-          timestamp: new Date().toISOString(),
-          step: "AUTH_VALIDATION",
-        });
-        return {
-          success: false,
-          message: "Session error: Access token missing. Please log in again.",
-        };
-      }
-
-      // Only a path this app itself reported as a Firefox profile.
-      const known = await findFirefoxVintedSessions();
-      const profile = known.find((p) => path.resolve(p.path) === path.resolve(profilePath));
-      if (!profile) {
-        throw new Error("That Firefox profile no longer exists. Refresh the list and pick another.");
-      }
-
-      sendProgress("IMPORT_START", `🦊 Reading Vinted session from Firefox profile "${profile.name}"...`);
-      // Normalized like the importer does ("www.vinted.es" -> "vinted.es"), so
-      // the member id lookup below matches the site that was imported.
-      const site = options.site
-        ? vintedSiteOf(options.site)
-        : profile.session.sites.length === 1 ? profile.session.sites[0].site : undefined;
-      const result = await importFirefoxSession({ profilePath: profile.path, profileName, site });
-      archivePath = result.profile_archive_path;
-
-      // The member id is the logged-in token's subject; used unless the user
-      // gave one.
-      const siteSession = profile.session.sites.find((s) => s.site === site);
-      const vintedMemberId = options.vintedMemberId?.trim() || siteSession?.userId;
-      sendProgress(
-        "LOGIN_STATE",
-        `✅ Vinted session is logged in on ${site}` + (vintedMemberId ? ` (member ${vintedMemberId})` : "")
-      );
-      sendProgress(
-        "COMPRESS_COMPLETE",
-        `✅ Vinted-only profile packed (${(result.profile_archive_size / 1024).toFixed(0)}KB, ${result.vinted_cookies.length} cookies)`
-      );
-
-      return await uploadAndLinkSession(event, result, {
-        profileName,
-        userEmail,
-        vintedEmail,
-        vintedMemberId,
-        accessToken,
-        uploadToS3,
-        metadata: { type: "firefox-import", firefoxProfile: profile.name, vintedSite: site },
-      }, sendProgress);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error(`[IPC] Firefox session import failed: ${errorMessage}`);
-      event.sender.send("interactive-login-error", {
-        error: errorMessage,
-        timestamp: new Date().toISOString(),
-      });
-      return { success: false, message: errorMessage };
     } finally {
       releaseBusy();
       if (archivePath) {

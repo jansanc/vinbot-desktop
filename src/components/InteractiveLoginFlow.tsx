@@ -7,6 +7,8 @@ import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import { Label } from "./ui/label";
 import { useError } from "../contexts/ErrorContext";
 import { ErrorHandler } from "../utils/errorHandler";
+import { useI18n } from "../i18n/I18nContext";
+import type { MessageKey } from "../i18n/messages";
 
 interface LoginProgress {
   step: string;
@@ -55,7 +57,6 @@ function formatSize(bytes: number): string {
 
 /** macOS: closing Firefox's window doesn't quit it; main watches for that, but ⌘Q is the sure way. */
 const isMac = typeof navigator !== "undefined" && /Mac/i.test(navigator.userAgent);
-const closeFirefoxHint = isMac ? "close its window or quit Firefox (⌘Q)" : "close it";
 
 /** "login": open a fresh Firefox to log in. "import": reuse the user's own Firefox session. */
 type Mode = "login" | "import";
@@ -68,6 +69,7 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
   userId: initialUserId = "",
 }) => {
   const { addError } = useError();
+  const { t } = useI18n();
   const [url, setUrl] = useState("https://www.vinted.es/member/signup/select_type?ref_url=%2F");
   const [profileName, setProfileName] = useState("");
   const [timeout, setTimeout] = useState(5);
@@ -207,7 +209,7 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
     if (!vintedEmail.trim()) {
       const validationError = ErrorHandler.createError(
         "VALIDATION_ERROR",
-        "Vinted email is required",
+        t("session.vintedEmailRequired"),
         { field: "vintedEmail" }
       );
       addError(validationError, "InteractiveLoginFlow");
@@ -232,7 +234,7 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
       const finalProfileName = profileName.trim() || `vinted_${Date.now()}`;
 
       if (mode === "import" && !selectedChoice) {
-        throw new Error("Choose the Firefox profile you're logged in to Vinted with");
+        throw new Error(t("session.chooseProfile"));
       }
 
       const response =
@@ -270,9 +272,9 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
 
       // Check if this is a session/auth error
       if (msg.includes("Session error") || msg.includes("access token") || msg.includes("not authenticated")) {
-        setError("Your session has expired. Please log in again from the login page.");
+        setError(t("session.sessionExpired"));
       } else {
-        setError(`Failed to start: ${msg}`);
+        setError(t("session.failedToStart", { message: msg }));
       }
     } finally {
       setIsLoading(false);
@@ -287,21 +289,12 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
     setShowAdvanced(false);
   };
 
-  // Map technical steps to friendly messages
+  // Main reports steps by name; known ones are shown in the app's language
   const getFriendlyMessage = (step: string, originalMessage: string): string => {
-    const friendlyMessages: { [key: string]: string } = {
-      "START": "Starting login process...",
-      "IMPORT_START": "Reading your Firefox session...",
-      "BROWSER_LAUNCH": "Opening browser...",
-      "WAITING_FOR_LOGIN": isMac
-        ? "Waiting for you to log in (close the window or quit Firefox with ⌘Q when done)..."
-        : "Waiting for you to log in (close browser when done)...",
-      "EXTRACT_COMPLETE": "Session saved successfully!",
-      "COMPRESS_START": "Saving your session...",
-      "UPLOAD_START": "Uploading to cloud...",
-      "UPLOAD_SUCCESS": "Upload complete!",
-    };
-    return friendlyMessages[step] || originalMessage;
+    const known = ["START", "IMPORT_START", "BROWSER_LAUNCH", "WAITING_FOR_LOGIN", "EXTRACT_COMPLETE", "COMPRESS_START", "UPLOAD_START", "UPLOAD_SUCCESS"];
+    if (!known.includes(step)) return originalMessage;
+    const key = step === "WAITING_FOR_LOGIN" && isMac ? "WAITING_FOR_LOGIN_MAC" : step;
+    return t(`steps.${key}` as MessageKey);
   };
 
   return (
@@ -309,11 +302,11 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
       <div className="animate-fade-in">
         {/* Header, set like the web app's page titles */}
         <div className="mb-8">
-          <h1 className="display text-[28px]">Connect your Vinted account</h1>
+          <h1 className="display text-[28px]">{t("session.title")}</h1>
           <p className="mt-2 max-w-xl text-[15px] leading-relaxed text-pretty text-muted-foreground">
             {mode === "import"
-              ? "Already logged in to Vinted in Firefox? We'll reuse that session, so there's no need to log in again."
-              : `We'll open Firefox for you to log in. Just ${closeFirefoxHint} when done, and your session will be saved automatically.`}
+              ? t("session.introImport")
+              : t("session.introLogin", { closeHint: t(isMac ? "session.closeHintMac" : "session.closeHint") })}
           </p>
         </div>
 
@@ -321,21 +314,21 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
         {!result ? (
           <Card>
             <CardHeader>
-              <CardTitle>Session</CardTitle>
+              <CardTitle>{t("session.cardTitle")}</CardTitle>
               <CardDescription>
-                Choose how to get your Vinted session, then enter the email of that Vinted account.
+                {t("session.cardDescription")}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               {/* Mode: fresh login, or reuse the session in the user's Firefox */}
               <div
                 role="radiogroup"
-                aria-label="How to get your Vinted session"
+                aria-label={t("session.modeGroup")}
                 className="grid grid-cols-2 gap-1 rounded-lg border border-border bg-muted p-1"
               >
                 {([
-                  { value: "login", label: "Log in with Firefox", Icon: LogIn },
-                  { value: "import", label: "Use my Firefox session", Icon: Import },
+                  { value: "login", label: t("session.modeLogin"), Icon: LogIn },
+                  { value: "import", label: t("session.modeImport"), Icon: Import },
                 ] as const).map(({ value, label, Icon }) => (
                   <button
                     key={value}
@@ -361,7 +354,7 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
               {error && (
                 <Alert variant="destructive">
                   <AlertCircle className="h-4 w-4" />
-                  <AlertTitle>Something went wrong</AlertTitle>
+                  <AlertTitle>{t("session.errorTitle")}</AlertTitle>
                   <AlertDescription>{error}</AlertDescription>
                 </Alert>
               )}
@@ -370,7 +363,7 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
               {mode === "import" && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label>Firefox profile</Label>
+                    <Label>{t("session.firefoxProfile")}</Label>
                     <Button
                       type="button"
                       variant="ghost"
@@ -379,16 +372,16 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
                       disabled={isScanning || isLoading}
                     >
                       <RefreshCw className={isScanning ? "animate-spin" : ""} />
-                      <span>Refresh</span>
+                      <span>{t("session.refresh")}</span>
                     </Button>
                   </div>
 
                   {firefoxProfiles.length === 0 ? (
                     <p className="rounded-lg border border-dashed border-input/60 p-4 text-sm text-muted-foreground">
-                      {isScanning ? "Looking for Firefox profiles..." : "No Firefox profiles found on this computer."}
+                      {isScanning ? t("session.scanning") : t("session.noProfiles")}
                     </p>
                   ) : (
-                    <div role="radiogroup" aria-label="Firefox profile" className="space-y-2">
+                    <div role="radiogroup" aria-label={t("session.firefoxProfile")} className="space-y-2">
                       {choices.map(({ key, profile, site }) => {
                         const usable = !!site;
                         const selected = key === selectedChoiceKey;
@@ -420,7 +413,7 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
                                 </span>
                                 {profile.isDefault && (
                                   <span className="rounded-full border border-border bg-secondary px-2 py-px text-[11px] font-medium text-muted-foreground">
-                                    Default
+                                    {t("session.defaultProfile")}
                                   </span>
                                 )}
                               </span>
@@ -430,14 +423,16 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
                                 }`}
                               >
                                 {profile.error
-                                  ? "Couldn't read this profile"
+                                  ? t("session.profileUnreadable")
                                   : !profile.session?.sites
-                                    ? "App needs a restart to read this profile"
+                                    ? t("session.needsRestart")
                                     : usable
-                                    ? `Logged in on ${site!.site}` + (site!.userId ? ` · member ${site!.userId}` : "")
+                                    ? site!.userId
+                                      ? t("session.loggedInOnMember", { site: site!.site, member: site!.userId })
+                                      : t("session.loggedInOn", { site: site!.site })
                                     : profile.session.state === "anonymous"
-                                      ? "Not logged in to Vinted"
-                                      : "No Vinted session"}
+                                      ? t("session.notLoggedIn")
+                                      : t("session.noSession")}
                               </span>
                             </span>
                           </button>
@@ -447,25 +442,24 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
                   )}
 
                   <p className="text-xs leading-relaxed text-muted-foreground">
-                    Only your Vinted cookies are copied — nothing else from your browser. Firefox can stay open.
-                    Not logged in? Open Vinted in Firefox, log in, then press Refresh.
+                    {t("session.importHint")}
                   </p>
                 </div>
               )}
 
               {/* Email Input - Main Required Field */}
               <div className="grid gap-1.5">
-                <Label htmlFor="email">Vinted email</Label>
+                <Label htmlFor="email">{t("session.vintedEmail")}</Label>
                 <Input
                   id="email"
                   type="email"
                   value={vintedEmail}
                   onChange={(e) => setVintedEmail(e.target.value)}
                   disabled={isLoading}
-                  placeholder="you@example.com"
+                  placeholder={t("login.emailPlaceholder")}
                 />
                 <p className="text-xs text-muted-foreground">
-                  The email of the Vinted account this session belongs to.
+                  {t("session.vintedEmailHint")}
                 </p>
               </div>
 
@@ -506,7 +500,7 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
                     className={`h-4 w-4 transition-transform duration-150 ${showAdvanced ? "rotate-180" : ""}`}
                     aria-hidden
                   />
-                  Advanced options
+                  {t("session.advanced")}
                 </button>
 
                 {showAdvanced && (
@@ -514,7 +508,7 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
                     {/* Timeout Input (only the login window waits) */}
                     {mode === "login" && (
                     <div className="grid gap-1.5">
-                      <Label htmlFor="timeout">Wait time (minutes)</Label>
+                      <Label htmlFor="timeout">{t("session.waitTime")}</Label>
                       <Input
                         id="timeout"
                         type="number"
@@ -525,21 +519,21 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
                         max="60"
                       />
                       <p className="text-xs text-muted-foreground">
-                        {isMac ? "How long to wait for you to close or quit Firefox" : "How long to wait for you to close the browser"}
+                        {t(isMac ? "session.waitHintMac" : "session.waitHint")}
                       </p>
                     </div>
                     )}
 
                     {/* Profile Name */}
                     <div className="grid gap-1.5">
-                      <Label htmlFor="profileName">Session name (optional)</Label>
+                      <Label htmlFor="profileName">{t("session.sessionName")}</Label>
                       <Input
                         id="profileName"
                         type="text"
                         value={profileName}
                         onChange={(e) => setProfileName(e.target.value)}
                         disabled={isLoading}
-                        placeholder="Leave empty for auto-generated name"
+                        placeholder={t("session.sessionNamePlaceholder")}
                       />
                     </div>
                   </div>
@@ -558,12 +552,12 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
                 {isLoading ? (
                   <>
                     <Loader2 className="animate-spin" aria-hidden />
-                    <span>{mode === "import" ? "Importing..." : "Starting..."}</span>
+                    <span>{mode === "import" ? t("session.importing") : t("session.starting")}</span>
                   </>
                 ) : mode === "import" ? (
-                  "Import session"
+                  t("session.importButton")
                 ) : (
-                  "Open Firefox and log in"
+                  t("session.loginButton")
                 )}
               </Button>
             </CardFooter>
@@ -575,15 +569,15 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({
               <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-full border border-success/25 bg-success/10">
                 <CheckCircle2 className="h-6 w-6 text-success" aria-hidden />
               </div>
-              <h2 className="display text-[22px]">Session saved</h2>
+              <h2 className="display text-[22px]">{t("session.savedTitle")}</h2>
               <p className="mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">
-                Your Vinted session is saved and uploaded. Vinbot can now work with this account.
+                {t("session.savedBody")}
               </p>
               <p className="mt-1 text-xs text-muted-foreground" data-numeric>
-                Session size: {formatSize(result.profile_archive_size || 0)}
+                {t("session.sessionSize", { size: formatSize(result.profile_archive_size || 0) })}
               </p>
               <Button onClick={handleReset} variant="outline" className="mt-6">
-                Save another session
+                {t("session.saveAnother")}
               </Button>
             </CardContent>
           </Card>

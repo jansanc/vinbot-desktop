@@ -4,9 +4,12 @@
  */
 
 export interface AppError {
-  code: string;
+  code: ErrorCode;
   message: string;
+  /** English. The toast shows `serverMessage`, else the translation of `code`. */
   userMessage: string;
+  /** What the API said to do, when it said something specific */
+  serverMessage?: string;
   severity: "info" | "warning" | "error" | "critical";
   details?: Record<string, unknown>;
   timestamp: string;
@@ -128,11 +131,13 @@ export class ErrorHandler {
     const code = this.classify(error);
     const { userMessage, severity } = this.ERROR_MESSAGES[code];
     const details = error instanceof Error ? { originalError: error.message } : { error: String(error) };
+    const serverMessage = this.extractServerMessage(error) ?? undefined;
 
     return {
       code,
       message: error instanceof Error ? error.message : String(error),
-      userMessage: this.extractServerMessage(error) || userMessage,
+      userMessage: serverMessage || userMessage,
+      serverMessage,
       severity,
       details,
       timestamp: new Date().toISOString(),

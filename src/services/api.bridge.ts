@@ -11,12 +11,12 @@ import type { LoginCredentials, LoginResponse } from "./api.service";
  * rejected by the API.
  */
 
-export { UnauthorizedError } from "./errors";
-import { UnauthorizedError } from "./errors";
+export { UnauthorizedError, CodedError } from "./errors";
+import { UnauthorizedError, CodedError } from "./errors";
 
 type IpcResult<T> =
   | { ok: true; data: T }
-  | { ok: false; error: { name: string; message: string } };
+  | { ok: false; error: { name: string; message: string; code?: string; status?: number } };
 
 function onUnauthorized(message: string): UnauthorizedError {
   try {
@@ -42,7 +42,8 @@ function unwrap<T>(result: IpcResult<T>): T {
   if (result.error.name === "UnauthorizedError") {
     throw onUnauthorized(result.error.message);
   }
-  throw new Error(result.error.message);
+  const { message, code, status } = result.error;
+  throw code || status ? new CodedError(message, code, status) : new Error(message);
 }
 
 function bridge() {
@@ -65,8 +66,8 @@ export class ApiBridge {
   }
 
   /** Null when the user cancelled. */
-  static async loginWithGoogle(): Promise<LoginResponse | null> {
-    return unwrap(await bridge().googleLogin());
+  static async loginWithGoogle(locale?: string): Promise<LoginResponse | null> {
+    return unwrap(await bridge().googleLogin(locale));
   }
 
   static async cancelGoogleLogin(): Promise<void> {

@@ -1,6 +1,6 @@
 type IpcResult<T> =
   | { ok: true; data: T }
-  | { ok: false; error: { name: string; message: string } };
+  | { ok: false; error: { name: string; message: string; code?: string; status?: number } };
 
 declare global {
   interface Window {
@@ -13,7 +13,7 @@ declare global {
         }) => Promise<IpcResult<any>>;
         providers: () => Promise<IpcResult<{ google?: boolean }>>;
         // null: the user cancelled
-        googleLogin: () => Promise<IpcResult<any | null>>;
+        googleLogin: (locale?: string) => Promise<IpcResult<any | null>>;
         cancelGoogleLogin: () => Promise<IpcResult<void>>;
         me:(accessToken?: string) => Promise<IpcResult<any>>;
         refresh: (refreshToken?: string) => Promise<IpcResult<any>>;

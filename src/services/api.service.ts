@@ -12,8 +12,8 @@ import { config } from "../config/config";
  * Nothing here may touch `window`, `document` or `localStorage`.
  */
 
-export { UnauthorizedError } from "./errors";
-import { UnauthorizedError } from "./errors";
+export { UnauthorizedError, CodedError } from "./errors";
+import { UnauthorizedError, CodedError } from "./errors";
 
 export interface LoginResponse {
   status: "success" | "fail" | "error";
@@ -92,11 +92,14 @@ export class ApiService {
         body: JSON.stringify(credentials),
       });
 
+      // A 401 here is a wrong password, not a dead session: no
+      // handleAuthError, which would sign the renderer out of nothing
       if (!response.ok) {
-        ApiService.handleAuthError(response);
-        const errorData = await response.json();
-        throw new Error(
-          errorData.data?.message || errorData.message || "Login failed"
+        const errorData = await response.json().catch(() => null);
+        throw new CodedError(
+          errorData?.data?.message || errorData?.message || "Login failed",
+          errorData?.code,
+          response.status
         );
       }
 
@@ -140,15 +143,20 @@ export class ApiService {
    * The code the loopback listener got from a Google sign-in and the PKCE
    * verifier it was started with, for a session (src/main/google-sign-in.ts).
    */
-  static async exchangeGoogleCode(code: string, codeVerifier: string): Promise<LoginResponse> {
+  static async exchangeGoogleCode(code: string, codeVerifier: string, locale?: string): Promise<LoginResponse> {
     const response = await fetch(`${config.api.baseUrl}${config.api.endpoints.auth.googleToken}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code, codeVerifier }),
+      // The language a new account's emails are in
+      body: JSON.stringify({ code, codeVerifier, locale }),
     });
     const data = await response.json().catch(() => null);
     if (!response.ok || data?.status !== "success") {
-      throw new Error(data?.data?.message || data?.message || "Google sign-in failed");
+      throw new CodedError(
+        data?.data?.message || data?.message || "Google sign-in failed",
+        data?.code,
+        response.status
+      );
     }
     if (!data.data?.session?.accessToken) {
       throw new Error("Server did not return access token");

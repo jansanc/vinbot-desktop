@@ -1,6 +1,8 @@
 import { LogOut } from "lucide-react";
 import { AuthUser } from "../services/auth.service";
 import ThemeToggle from "./ThemeToggle";
+import LanguageSelect from "./LanguageSelect";
+import { useI18n } from "../i18n/I18nContext";
 import { Button } from "./ui/button";
 import { cn } from "@/lib/utils";
 
@@ -15,8 +17,9 @@ interface UserHeaderProps {
  * (badge "default"), neutral otherwise.
  */
 function PlanBadge({ tier }: { tier: string | null }) {
+  const { t } = useI18n();
   const paid = !!tier && ["basic", "pro", "enterprise"].includes(tier.toLowerCase());
-  const label = tier ? tier.charAt(0).toUpperCase() + tier.slice(1).toLowerCase() : "Free";
+  const label = tier ? tier.charAt(0).toUpperCase() + tier.slice(1).toLowerCase() : t("header.planFree");
   return (
     <span
       className={cn(
@@ -35,6 +38,7 @@ export default function UserHeader({
   onLogout,
   isLoggingOut,
 }: UserHeaderProps) {
+  const { t } = useI18n();
   const initial = (user.firstName || user.email || "?").charAt(0).toUpperCase();
 
   return (
@@ -42,7 +46,7 @@ export default function UserHeader({
       <span className="flex items-center gap-2 text-[15px] font-semibold tracking-[-0.02em]">
         <img src="brand/vinbot-mark-32.png" alt="" width={24} height={24} className="h-6 w-6" />
         Vinbot
-        <span className="font-normal text-muted-foreground">Authenticator</span>
+        <span className="font-normal text-muted-foreground">{t("header.authenticator")}</span>
       </span>
 
       <div className="flex min-w-0 items-center gap-3">
@@ -66,10 +70,11 @@ export default function UserHeader({
 
         <span className="h-5 w-px bg-border" aria-hidden="true" />
 
+        <LanguageSelect />
         <ThemeToggle />
         <Button variant="ghost" size="sm" onClick={onLogout} disabled={isLoggingOut}>
           <LogOut aria-hidden />
-          {isLoggingOut ? "Logging out..." : "Log out"}
+          {isLoggingOut ? t("header.loggingOut") : t("header.logout")}
         </Button>
       </div>
     </header>

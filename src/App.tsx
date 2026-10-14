@@ -11,12 +11,17 @@ import {
 import { ErrorProvider } from "./contexts/ErrorContext";
 import { ErrorToastContainer } from "./components/ErrorToast";
 import { useError } from "./contexts/ErrorContext";
+import { useI18n } from "./i18n/I18nContext";
+import { signInErrorKey } from "./i18n/signInErrors";
+import type { MessageKey } from "./i18n/messages";
 
 function AppContent() {
   const { errors, removeError } = useError();
   const [authState, setAuthState] = useState<AuthState>("unauthenticated");
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [authError, setAuthError] = useState<string>("");
+  // A message key, so it follows a language change while it is shown
+  const [authError, setAuthError] = useState<MessageKey | "">("");
+  const { locale, t } = useI18n();
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   // Waiting on the browser, where the user picks their Google account
@@ -52,7 +57,7 @@ function AppContent() {
         await AuthService.logout();
         setUser(null);
         setAuthState("unauthenticated");
-        setAuthError(error.message);
+        setAuthError("login.noSubscription");
         return false;
       }
       // 401s are handled by the auth:unauthorized listener below.
@@ -102,7 +107,7 @@ function AppContent() {
 
         // If we get here, refresh failed or user data is missing
         AuthService.clearSession();
-        setAuthError("Your session has expired. Please log in again.");
+        setAuthError("login.sessionExpired");
       }
     };
 
@@ -117,7 +122,7 @@ function AppContent() {
       AuthService.clearSession();
       setUser(null);
       setAuthState("unauthenticated");
-      setAuthError("Your session has expired. Please log in again.");
+      setAuthError("login.sessionExpired");
     };
 
     window.addEventListener("auth:unauthorized", handleUnauthorized);
@@ -166,7 +171,7 @@ function AppContent() {
   // Shared by both sign-ins; a null result (Google cancelled) changes nothing
   const signIn = async (
     attempt: () => Promise<{ user: AuthUser } | null>,
-    fallbackError: string
+    fallbackError: MessageKey
   ) => {
     setIsAuthenticating(true);
     setAuthError("");
@@ -179,8 +184,8 @@ function AppContent() {
       setUser(result.user);
       setAuthState("authenticated");
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : fallbackError;
-      setAuthError(errorMessage);
+      console.error("[App] Sign-in failed:", err);
+      setAuthError(signInErrorKey(err, fallbackError));
       setAuthState("error");
     } finally {
       setIsAuthenticating(false);
@@ -188,12 +193,12 @@ function AppContent() {
   };
 
   const handleLogin = (email: string, password: string) =>
-    signIn(() => AuthService.login(email, password), "Login failed");
+    signIn(() => AuthService.login(email, password), "login.loginFailed");
 
   const handleGoogleLogin = async () => {
     setIsGoogleSigningIn(true);
     try {
-      await signIn(() => AuthService.loginWithGoogle(), "Google sign-in failed");
+      await signIn(() => AuthService.loginWithGoogle(locale), "google.failed");
     } finally {
       setIsGoogleSigningIn(false);
     }
@@ -228,7 +233,7 @@ function AppContent() {
         <LoginForm
           onSubmit={handleLogin}
           isLoading={isAuthenticating}
-          error={authError}
+          error={authError ? t(authError) : undefined}
           google={
             googleEnabled
               ? {

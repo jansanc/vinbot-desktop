@@ -1,5 +1,6 @@
 import { BrowserWindow, ipcMain } from "electron";
-import { ApiService, UnauthorizedError } from "../../services/api.service";
+import { ApiService, CodedError, UnauthorizedError } from "../../services/api.service";
+import { isLocale } from "../../i18n/messages";
 import { getTurnstileToken } from "../turnstile";
 import { cancelGoogleSignIn, GoogleSignInCancelled, runGoogleSignIn } from "../google-sign-in";
 import { tokenStore } from "./token-store";
@@ -14,7 +15,7 @@ import { tokenStore } from "./token-store";
 
 export type IpcResult<T> =
   | { ok: true; data: T }
-  | { ok: false; error: { name: string; message: string } };
+  | { ok: false; error: { name: string; message: string; code?: string; status?: number } };
 
 /**
  * `ipcRenderer.invoke` rewraps thrown errors ("Error invoking remote method
@@ -47,7 +48,9 @@ async function run<T>(operation: () => Promise<T>): Promise<IpcResult<T>> {
           ? error.name
           : "Error";
     const message = error instanceof Error ? error.message : String(error);
-    return { ok: false, error: { name, message } };
+    // What the renderer translates on (see CodedError)
+    const { code, status } = error instanceof CodedError ? error : ({} as Partial<CodedError>);
+    return { ok: false, error: { name, message, code, status } };
   }
 }
 
@@ -74,11 +77,12 @@ export function registerAuthHandlers(): void {
   ipcMain.handle("api:providers", async () => run(() => ApiService.getAuthProviders()));
 
   // Resolves with null when the user cancels, which is no error to show
-  ipcMain.handle("api:googleLogin", async (event) =>
+  ipcMain.handle("api:googleLogin", async (event, requestedLocale?: string) =>
     run(async () => {
+      const locale = isLocale(requestedLocale) ? requestedLocale : undefined;
       let grant;
       try {
-        grant = await runGoogleSignIn();
+        grant = await runGoogleSignIn(locale);
       } catch (error) {
         if (error instanceof GoogleSignInCancelled) return null;
         throw error;
@@ -91,7 +95,7 @@ export function registerAuthHandlers(): void {
         win.focus();
       }
 
-      const response = await ApiService.exchangeGoogleCode(grant.code, grant.codeVerifier);
+      const response = await ApiService.exchangeGoogleCode(grant.code, grant.codeVerifier, locale);
       tokenStore.set(response.data.session);
       return withoutTokens(response);
     })

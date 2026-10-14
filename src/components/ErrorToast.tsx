@@ -2,6 +2,7 @@ import React from "react";
 import { AlertCircle, AlertTriangle, Info, X } from "lucide-react";
 import { AppError } from "../utils/errorHandler";
 import { cn } from "@/lib/utils";
+import { useI18n } from "../i18n/I18nContext";
 
 interface ErrorToastProps {
   error: AppError;
@@ -17,6 +18,9 @@ const SEVERITY = {
 } as const;
 
 export const ErrorToast: React.FC<ErrorToastProps> = ({ error, onDismiss }) => {
+  const { t } = useI18n();
+  // The API's own advice when it gave one, else the generic text in the app's language
+  const text = error.serverMessage ?? t(`errors.${error.code}`);
   const { Icon, tone, edge } =
     error.severity === "critical" || error.severity === "error"
       ? SEVERITY.error
@@ -34,14 +38,14 @@ export const ErrorToast: React.FC<ErrorToastProps> = ({ error, onDismiss }) => {
     >
       <Icon className={cn("mt-0.5 h-4 w-4 shrink-0", tone)} aria-hidden />
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium leading-snug">{error.userMessage}</p>
-        {error.message !== error.userMessage && (
+        <p className="text-sm font-medium leading-snug">{text}</p>
+        {error.message !== text && error.message !== error.userMessage && (
           <p className="mt-1 wrap-break-word text-xs text-muted-foreground">{error.message}</p>
         )}
       </div>
       <button
         onClick={onDismiss}
-        aria-label="Dismiss"
+        aria-label={t("errors.dismiss")}
         className="-m-1 shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
       >
         <X className="h-4 w-4" aria-hidden />

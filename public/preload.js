@@ -12,7 +12,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     login: (credentials) => ipcRenderer.invoke("api:login", credentials),
     // Google sign-in runs in the user's browser; main keeps the tokens
     providers: () => ipcRenderer.invoke("api:providers"),
-    googleLogin: () => ipcRenderer.invoke("api:googleLogin"),
+    googleLogin: (locale) => ipcRenderer.invoke("api:googleLogin", locale),
     cancelGoogleLogin: () => ipcRenderer.invoke("api:cancelGoogleLogin"),
     me: (accessToken) => ipcRenderer.invoke("api:me", accessToken),
     refresh: (refreshToken) => ipcRenderer.invoke("api:refresh", refreshToken),

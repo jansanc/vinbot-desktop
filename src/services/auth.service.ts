@@ -1,4 +1,4 @@
-import { ApiBridge as ApiService } from "./api.bridge";
+import { ApiBridge as ApiService, CodedError } from "./api.bridge";
 import { config } from "../config/config";
 import { storage } from "../config/storage";
 
@@ -80,8 +80,8 @@ export class AuthService {
    * Google sign-in in the user's browser. Null when they cancelled it from the
    * app (cancelGoogleLogin).
    */
-  static async loginWithGoogle(): Promise<{ user: AuthUser; session: Session } | null> {
-    const response = await ApiService.loginWithGoogle();
+  static async loginWithGoogle(locale?: string): Promise<{ user: AuthUser; session: Session } | null> {
+    const response = await ApiService.loginWithGoogle(locale);
     return response ? AuthService.completeLogin(response) : null;
   }
 
@@ -121,7 +121,8 @@ export class AuthService {
       if (error instanceof SubscriptionError) throw error;
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error("[Auth] Subscription tier verification failed:", errorMessage);
-      throw new Error(`Failed to verify account access. ${errorMessage}`);
+      // The login form says so in the app's language (code VERIFY_FAILED)
+      throw new CodedError(`Failed to verify account access. ${errorMessage}`, "VERIFY_FAILED");
     }
 
     AuthService.saveSession(session);

@@ -1,6 +1,9 @@
 import React, { useState } from "react";
 import { Loader2 } from "lucide-react";
 import ThemeToggle from "./ThemeToggle";
+import LanguageSelect from "./LanguageSelect";
+import { useI18n } from "../i18n/I18nContext";
+import type { MessageKey } from "../i18n/messages";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { config } from "../config/config";
@@ -80,32 +83,33 @@ export default function LoginForm({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [localError, setLocalError] = useState("");
+  // A message key, so a language change while it is shown translates it
+  const [localError, setLocalError] = useState<MessageKey | "">("");
+  const { t } = useI18n();
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLocalError("");
 
     if (!email || !password) {
-      setLocalError("Email and password are required");
+      setLocalError("login.required");
       return;
     }
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      setLocalError("Please enter a valid email address");
+      setLocalError("login.invalidEmail");
       return;
     }
 
     try {
       await onSubmit(email, password);
-    } catch (err) {
-      const errorMessage =
-        err instanceof Error ? err.message : "Login failed. Please try again.";
-      setLocalError(errorMessage);
+    } catch {
+      // App shows sign-in failures through `error`
+      setLocalError("login.loginFailed");
     }
   };
 
-  const shownError = error || localError;
+  const shownError = error || (localError ? t(localError) : "");
 
   return (
     <div className="relative isolate flex min-h-screen flex-col bg-background text-foreground">
@@ -113,9 +117,12 @@ export default function LoginForm({
         <span className="flex items-center gap-2 text-[15px] font-semibold tracking-[-0.02em]">
           <img src="brand/vinbot-mark-32.png" alt="" width={24} height={24} className="h-6 w-6" />
           Vinbot
-          <span className="font-normal text-muted-foreground">Authenticator</span>
+          <span className="font-normal text-muted-foreground">{t("header.authenticator")}</span>
         </span>
-        <ThemeToggle />
+        <div className="flex items-center gap-1">
+          <LanguageSelect />
+          <ThemeToggle />
+        </div>
       </header>
 
       {/* Sized to fit the default 1200x800 window without scrolling */}
@@ -124,9 +131,9 @@ export default function LoginForm({
           <div className="flex flex-1 items-center justify-center py-4">
             <div className="w-full max-w-[24rem] animate-fade-in">
               <div className="mb-7">
-                <h1 className="display text-[30px]">Sign in</h1>
+                <h1 className="display text-[30px]">{t("login.title")}</h1>
                 <p className="mt-2 text-[15px] leading-relaxed text-pretty text-muted-foreground">
-                  With your Vinbot account.
+                  {t("login.subtitle")}
                 </p>
               </div>
 
@@ -138,9 +145,9 @@ export default function LoginForm({
                       className="flex min-h-10 items-center gap-2.5 rounded-lg border border-dashed border-input/75 px-3 py-2 text-sm text-muted-foreground"
                     >
                       <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" aria-hidden />
-                      <span className="flex-1">Continue in your browser to sign in with Google.</span>
+                      <span className="flex-1">{t("google.waiting")}</span>
                       <button type="button" className={linkClass} onClick={google.onCancel}>
-                        Cancel
+                        {t("google.cancel")}
                       </button>
                     </div>
                   ) : (
@@ -151,12 +158,12 @@ export default function LoginForm({
                       disabled={isLoading}
                     >
                       <GoogleMark />
-                      Continue with Google
+                      {t("google.continue")}
                     </FormButton>
                   )}
                   <div className="flex items-center gap-3 text-xs text-muted-foreground" role="separator">
                     <span className="flex-1 border-t border-border" />
-                    or
+                    {t("google.or")}
                     <span className="flex-1 border-t border-border" />
                   </div>
                 </div>
@@ -173,13 +180,13 @@ export default function LoginForm({
                 )}
 
                 <div className="grid gap-1.5">
-                  <Label htmlFor="email">Email</Label>
+                  <Label htmlFor="email">{t("login.email")}</Label>
                   <Input
                     id="email"
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@example.com"
+                    placeholder={t("login.emailPlaceholder")}
                     disabled={isLoading}
                     autoComplete="email"
                     required
@@ -188,14 +195,14 @@ export default function LoginForm({
 
                 <div className="grid gap-1.5">
                   <div className="flex items-baseline justify-between gap-3">
-                    <Label htmlFor="password">Password</Label>
+                    <Label htmlFor="password">{t("login.password")}</Label>
                     <button
                       type="button"
                       className={cn(linkClass, "text-xs text-muted-foreground hover:text-foreground")}
                       onClick={() => setShowPassword(!showPassword)}
                       disabled={isLoading}
                     >
-                      {showPassword ? "Hide" : "Show"}
+                      {showPassword ? t("login.hide") : t("login.show")}
                     </button>
                   </div>
                   <Input
@@ -210,19 +217,19 @@ export default function LoginForm({
                 </div>
 
                 <FormButton type="submit" disabled={isLoading} busy={isLoading && !google?.isWaiting}>
-                  {isLoading && !google?.isWaiting ? "Signing in..." : "Sign in"}
+                  {isLoading && !google?.isWaiting ? t("login.signingIn") : t("login.signIn")}
                 </FormButton>
               </form>
 
               <div className="mt-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-border pt-5 text-[13px] text-muted-foreground">
                 <span>
-                  No account yet?{" "}
+                  {t("login.noAccount")}{" "}
                   <a href={`${config.web.baseUrl}/register`} target="_blank" rel="noopener noreferrer" className={linkClass}>
-                    Sign up
+                    {t("login.signUp")}
                   </a>
                 </span>
                 <a href={`${config.web.baseUrl}/forgot-password`} target="_blank" rel="noopener noreferrer" className={linkClass}>
-                  Forgot your password?
+                  {t("login.forgotPassword")}
                 </a>
               </div>
             </div>

@@ -121,25 +121,42 @@ local build (CI has no `.env` and uses the defaults).
 ## What ships
 
 Only `public/{electron,preload}.js`, the renderer in `build/` (without source
-maps), the compiled main process in `dist/`, and the two runtime dependencies
-(`sql.js`, `tar`). Everything the renderer imports is bundled by webpack, so it
-lives in `devDependencies`. A new package used by the main process must go in
+maps), the compiled main process in `dist/`, the runtime dependencies
+(`sql.js`, `electron-updater`), and Firefox (below). Everything the renderer
+imports is bundled by Vite, so it lives in `devDependencies`. A new package used by the main process must go in
 `dependencies`, or the installed app fails to load it.
+
+## Firefox
+
+The app ships its own Firefox, so users don't need one. `npm run dist:*`
+runs `npm run firefox:fetch` (`scripts/fetch-firefox.js`) first: it downloads
+Mozilla's latest release for the OS it runs on into `vendor/firefox` (not in
+git), checks it against Mozilla's SHA-512 sums, and electron-builder copies it
+to `resources/firefox`. Pin a version with `FIREFOX_VERSION=158.0`.
+
+- It never updates itself (on Windows, `distribution/policies.json`; on
+  macOS, the login profile's prefs). **Each app release is what updates it**,
+  so release regularly, or at least for Firefox security releases.
+- About 85 MB of the installer (179 MB instead of 94 MB on Windows). The
+  Windows copy drops what a login window never uses (updater, crash
+  reporter, WebGPU compiler, local-AI runtime): see `WINDOWS_UNUSED`.
+- macOS: `Firefox.app` keeps Mozilla's signature (`mac.signIgnore`), which
+  notarization accepts for nested code. Check `spctl -a -vv` on the built app.
+- An installed Firefox is only the fallback (a build without `vendor/firefox`,
+  or `npm start` before fetching): Program Files and `%LOCALAPPDATA%` on
+  Windows; `/Applications`, `~/Applications` or wherever Spotlight finds it
+  on macOS.
 
 ## Platform notes
 
-- Firefox is looked up in Program Files and `%LOCALAPPDATA%` on Windows, and
-  in `/Applications`, `~/Applications` or wherever Spotlight finds it on
-  macOS. Profiles are read from `%APPDATA%\Mozilla\Firefox` and
-  `~/Library/Application Support/Firefox`.
 - On macOS, closing Firefox's last window doesn't quit it. The login watches
   for the window to close (with `osascript`) and then quits Firefox itself.
   Quitting with ⌘Q always works, and the app tells Mac users so.
 
 ## Smoke test before sending
 
-On a clean machine of each OS: install, log in, import a Firefox session,
-and run one "Log in with Firefox" flow end to end. On macOS, check that
+On a clean machine of each OS, **without Firefox installed**: install, log
+in, and run one "Open Firefox and log in" flow end to end. On macOS, check that
 closing the Firefox window (not ⌘Q) saves the session.
 
 ## Troubleshooting

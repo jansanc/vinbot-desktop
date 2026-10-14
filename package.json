@@ -12,14 +12,15 @@
     "typecheck": "tsc --noEmit -p . && tsc -p cli",
     "test": "vitest run",
     "electron-dev": "node dev-start.js",
-    "electron-build": "npm run clean && npm run compile:main && npm run renderer:build && electron-builder --publish never",
+    "electron-build": "npm run clean && npm run firefox:fetch && npm run compile:main && npm run renderer:build && electron-builder --publish never",
     "build": "npm run renderer:build",
     "start": "npm run electron-dev",
     "extract:vinted:firefox": "ts-node cli/vinted-firefox.ts",
     "clean": "node -e \"for (const d of ['dist','build','dist-app']) require('fs').rmSync(d,{recursive:true,force:true})\"",
     "dist": "npm run electron-build",
     "dist:win": "npm run electron-build -- --win -c.electronDist=node_modules/electron/dist",
-    "dist:mac": "npm run electron-build -- --mac"
+    "dist:mac": "npm run electron-build -- --mac",
+    "firefox:fetch": "node scripts/fetch-firefox.js"
   },
   "dependencies": {
     "electron-updater": "^6.8.9",
@@ -35,6 +36,7 @@
     "@types/react-dom": "^18.3.0",
     "@types/sql.js": "^1.4.11",
     "@vitejs/plugin-react": "^6.1.2",
+    "7zip-bin": "^5.2.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "concurrently": "^8.2.2",
@@ -112,7 +114,16 @@
           ]
         }
       ],
-      "icon": "public/favicon.png"
+      "icon": "public/favicon.png",
+      "extraResources": [
+        {
+          "from": "vendor/firefox",
+          "to": "firefox",
+          "filter": [
+            "**/*"
+          ]
+        }
+      ]
     },
     "nsis": {
       "oneClick": false,
@@ -151,7 +162,19 @@
       "extendInfo": {
         "NSAppleEventsUsageDescription": "Vinbot Authenticator asks the Firefox login window it opened to quit, so your session is saved."
       },
-      "artifactName": "Vinbot-Authenticator-${version}-mac.${ext}"
+      "artifactName": "Vinbot-Authenticator-${version}-mac.${ext}",
+      "extraResources": [
+        {
+          "from": "vendor/firefox",
+          "to": "firefox",
+          "filter": [
+            "**/*"
+          ]
+        }
+      ],
+      "signIgnore": [
+        "Contents/Resources/firefox/Firefox.app"
+      ]
     }
   }
 }

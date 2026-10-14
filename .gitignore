@@ -49,3 +49,6 @@ src/modules/vinted/auth/auth-vinted.json
 
 # Written by the Tailwind CLI watcher of the old (pre-Vite) dev setup
 /public/output.css
+
+# Firefox shipped with the app (npm run firefox:fetch)
+/vendor

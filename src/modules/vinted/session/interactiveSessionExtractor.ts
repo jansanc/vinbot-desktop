@@ -108,6 +108,31 @@ function run(argv) {
 const WARM_STARTUP_DIR = path.join(os.tmpdir(), "vinbot-firefox-startup");
 const WARM_STARTUP_FILES = ["startupCache", "compatibility.ini"];
 
+/**
+ * The Firefox shipped with the app, if this build has one: in the packaged
+ * app's resources (resources/firefox), or vendor/firefox when running from
+ * the repository (this file runs from dist/modules/vinted/session).
+ */
+function bundledFirefoxPath(): string | null {
+  const executable =
+    process.platform === "win32"
+      ? "firefox.exe"
+      : process.platform === "darwin"
+        ? path.join("Firefox.app", "Contents", "MacOS", "firefox")
+        : null;
+  if (!executable) return null;
+
+  const roots = [
+    process.resourcesPath && path.join(process.resourcesPath, "firefox"),
+    path.join(__dirname, "..", "..", "..", "..", "vendor", "firefox"),
+  ].filter((root): root is string => Boolean(root));
+  for (const root of roots) {
+    const candidate = path.join(root, executable);
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
 /** Copy the kept startup cache into a new profile, if there is one. */
 function restoreWarmStartup(profileDir: string): void {
   if (!WARM_STARTUP_FILES.every((f) => existsSync(path.join(WARM_STARTUP_DIR, f)))) return;
@@ -160,8 +185,16 @@ export class InteractiveSessionExtractor {
   /**
    * Find the Firefox executable. The interactive login only ever launches
    * Firefox; Chrome and Edge are never started by this app.
+   *
+   * The Firefox shipped inside the app comes first, so users don't need one
+   * of their own (scripts/fetch-firefox.js, copied into the app's resources
+   * by electron-builder). An installed Firefox is the fallback: a build made
+   * without it, or `npm start` before fetching it.
    */
   private findFirefoxPath(): string {
+    const bundled = bundledFirefoxPath();
+    if (bundled) return bundled;
+
     const paths: string[] = [];
     if (process.platform === "win32") {
       const programFiles = process.env.ProgramFiles || "C:\\Program Files";

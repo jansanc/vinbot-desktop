@@ -395,6 +395,129 @@
   cursor: not-allowed;
 }
 
+/* ====== Google sign-in ====== */
+.google-sign-in {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.btn-google {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.625rem;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid rgb(226, 232, 240);
+  border-radius: 0.5rem;
+  background: white;
+  color: rgb(31, 41, 55);
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-google:hover:not(:disabled) {
+  border-color: rgb(203, 213, 225);
+  background: rgb(248, 250, 252);
+}
+
+.btn-google:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+}
+
+.btn-google:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.google-waiting {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.75rem 1rem;
+  border: 1px dashed rgb(203, 213, 225);
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  color: rgb(55, 65, 81);
+}
+
+.google-waiting .spinner {
+  flex-shrink: 0;
+  width: 1rem;
+  height: 1rem;
+  color: rgb(59, 130, 246);
+  animation: google-spin 0.8s linear infinite;
+}
+
+@keyframes google-spin {
+  to { transform: rotate(360deg); }
+}
+
+.google-cancel {
+  margin-left: auto;
+  border: none;
+  background: none;
+  padding: 0;
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: rgb(37, 99, 235);
+  cursor: pointer;
+}
+
+.google-cancel:hover {
+  text-decoration: underline;
+}
+
+.login-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.75rem;
+  color: rgb(107, 114, 128);
+}
+
+.login-divider::before,
+.login-divider::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid rgb(229, 231, 235);
+}
+
+.dark .btn-google {
+  border-color: rgb(55, 65, 81);
+  background: rgb(17, 24, 39);
+  color: rgb(229, 231, 235);
+}
+
+.dark .btn-google:hover:not(:disabled) {
+  border-color: rgb(75, 85, 99);
+  background: rgb(31, 41, 55);
+}
+
+.dark .google-waiting {
+  border-color: rgb(75, 85, 99);
+  color: rgb(209, 213, 219);
+}
+
+.dark .google-cancel {
+  color: rgb(96, 165, 250);
+}
+
+.dark .login-divider {
+  color: rgb(156, 163, 175);
+}
+
+.dark .login-divider::before,
+.dark .login-divider::after {
+  border-top-color: rgb(55, 65, 81);
+}
+
 /* ====== Form Groups ====== */
 .form-group {
   display: flex;

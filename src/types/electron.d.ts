@@ -11,7 +11,11 @@ declare global {
           email: string;
           password: string;
         }) => Promise<IpcResult<any>>;
-        me: (accessToken?: string) => Promise<IpcResult<any>>;
+        providers: () => Promise<IpcResult<{ google?: boolean }>>;
+        // null: the user cancelled
+        googleLogin: () => Promise<IpcResult<any | null>>;
+        cancelGoogleLogin: () => Promise<IpcResult<void>>;
+        me:(accessToken?: string) => Promise<IpcResult<any>>;
         refresh: (refreshToken?: string) => Promise<IpcResult<any>>;
         logout: (accessToken?: string) => Promise<IpcResult<{ success: boolean }>>;
         getStoredSession: () => Promise<

@@ -128,6 +128,34 @@ export class ApiService {
     }
   }
 
+  /** Social sign-ins switched on at the API, e.g. { google: true } */
+  static async getAuthProviders(): Promise<{ google?: boolean }> {
+    const response = await fetch(`${config.api.baseUrl}${config.api.endpoints.auth.providers}`);
+    if (!response.ok) throw new Error("Failed to load sign-in options");
+    const data = await response.json();
+    return data?.data ?? {};
+  }
+
+  /**
+   * The code the loopback listener got from a Google sign-in and the PKCE
+   * verifier it was started with, for a session (src/main/google-sign-in.ts).
+   */
+  static async exchangeGoogleCode(code: string, codeVerifier: string): Promise<LoginResponse> {
+    const response = await fetch(`${config.api.baseUrl}${config.api.endpoints.auth.googleToken}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, codeVerifier }),
+    });
+    const data = await response.json().catch(() => null);
+    if (!response.ok || data?.status !== "success") {
+      throw new Error(data?.data?.message || data?.message || "Google sign-in failed");
+    }
+    if (!data.data?.session?.accessToken) {
+      throw new Error("Server did not return access token");
+    }
+    return data;
+  }
+
   static async refreshToken(refreshToken: string): Promise<LoginResponse> {
     try {
       const response = await fetch(

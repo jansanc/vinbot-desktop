@@ -19,7 +19,21 @@ function AppContent() {
   const [authError, setAuthError] = useState<string>("");
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  // Waiting on the browser, where the user picks their Google account
+  const [isGoogleSigningIn, setIsGoogleSigningIn] = useState(false);
+  // Hidden until the API says Google is switched on, like the web app
+  const [googleEnabled, setGoogleEnabled] = useState(false);
   const lastPlanCheck = useRef(0);
+
+  useEffect(() => {
+    let alive = true;
+    AuthService.isGoogleSignInEnabled().then((enabled) => {
+      if (alive) setGoogleEnabled(enabled);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   /**
    * Re-read the user, plan included, from the server. The cached copy is only
@@ -149,23 +163,46 @@ function AppContent() {
     return () => window.removeEventListener("focus", onFocus);
   }, [authState, refreshUser]);
 
-  const handleLogin = async (email: string, password: string) => {
+  // Shared by both sign-ins; a null result (Google cancelled) changes nothing
+  const signIn = async (
+    attempt: () => Promise<{ user: AuthUser } | null>,
+    fallbackError: string
+  ) => {
     setIsAuthenticating(true);
     setAuthError("");
 
     try {
-      // Already read from /auth/me by login().
-      const { user: loggedInUser } = await AuthService.login(email, password);
+      // Already read from /auth/me by the AuthService call.
+      const result = await attempt();
+      if (!result) return;
       lastPlanCheck.current = Date.now();
-      setUser(loggedInUser);
+      setUser(result.user);
       setAuthState("authenticated");
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Login failed";
+      const errorMessage = err instanceof Error ? err.message : fallbackError;
       setAuthError(errorMessage);
       setAuthState("error");
     } finally {
       setIsAuthenticating(false);
     }
+  };
+
+  const handleLogin = (email: string, password: string) =>
+    signIn(() => AuthService.login(email, password), "Login failed");
+
+  const handleGoogleLogin = async () => {
+    setIsGoogleSigningIn(true);
+    try {
+      await signIn(() => AuthService.loginWithGoogle(), "Google sign-in failed");
+    } finally {
+      setIsGoogleSigningIn(false);
+    }
+  };
+
+  const handleCancelGoogleLogin = () => {
+    AuthService.cancelGoogleLogin().catch((err) =>
+      console.warn("[App] Could not cancel Google sign-in:", err)
+    );
   };
 
   const handleLogout = async () => {
@@ -192,6 +229,15 @@ function AppContent() {
           onSubmit={handleLogin}
           isLoading={isAuthenticating}
           error={authError}
+          google={
+            googleEnabled
+              ? {
+                  onSignIn: handleGoogleLogin,
+                  onCancel: handleCancelGoogleLogin,
+                  isWaiting: isGoogleSigningIn,
+                }
+              : undefined
+          }
         />
         <ErrorToastContainer errors={errors} onDismiss={removeError} />
       </>

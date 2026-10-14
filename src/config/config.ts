@@ -34,6 +34,10 @@ export const config = {
         logout: "/api/v1/auth/logout",
         refresh: "/api/v1/auth/refresh",
         me: "/api/v1/auth/me",
+        providers: "/api/v1/auth/providers",
+        // Opened in the user's browser (src/main/google-sign-in.ts)
+        googleStart: "/api/v1/auth/oauth/google",
+        googleToken: "/api/v1/auth/oauth/desktop/token",
       },
       vinted: {
         link: "/api/v1/vinted/auth/link",

@@ -73,8 +73,35 @@ export class AuthService {
     email: string,
     password: string
   ): Promise<{ user: AuthUser; session: Session }> {
-    const response = await ApiService.login({ email, password });
+    return AuthService.completeLogin(await ApiService.login({ email, password }));
+  }
 
+  /**
+   * Google sign-in in the user's browser. Null when they cancelled it from the
+   * app (cancelGoogleLogin).
+   */
+  static async loginWithGoogle(): Promise<{ user: AuthUser; session: Session } | null> {
+    const response = await ApiService.loginWithGoogle();
+    return response ? AuthService.completeLogin(response) : null;
+  }
+
+  static async cancelGoogleLogin(): Promise<void> {
+    await ApiService.cancelGoogleLogin();
+  }
+
+  /** Whether the API has Google sign-in switched on; false if it can't say. */
+  static async isGoogleSignInEnabled(): Promise<boolean> {
+    try {
+      return (await ApiService.getAuthProviders()).google === true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** The same checks for every way of signing in: a session and a plan that allows the app. */
+  private static async completeLogin(
+    response: Awaited<ReturnType<typeof ApiService.login>>
+  ): Promise<{ user: AuthUser; session: Session }> {
     if (response.status !== "success") {
       throw new Error(response.message);
     }

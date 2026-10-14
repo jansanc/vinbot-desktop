@@ -60,6 +60,19 @@ export class ApiBridge {
     return unwrap(await bridge().login(credentials));
   }
 
+  static async getAuthProviders(): Promise<{ google?: boolean }> {
+    return unwrap(await bridge().providers());
+  }
+
+  /** Null when the user cancelled. */
+  static async loginWithGoogle(): Promise<LoginResponse | null> {
+    return unwrap(await bridge().googleLogin());
+  }
+
+  static async cancelGoogleLogin(): Promise<void> {
+    await unwrap(await bridge().cancelGoogleLogin());
+  }
+
   // Tokens are optional throughout: main uses its stored session when none is
   // given, and the renderer no longer holds any.
   static async refreshToken(refreshToken?: string): Promise<LoginResponse> {

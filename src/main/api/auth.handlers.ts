@@ -1,6 +1,7 @@
 import { BrowserWindow, ipcMain } from "electron";
 import { ApiService, UnauthorizedError } from "../../services/api.service";
 import { getTurnstileToken } from "../turnstile";
+import { cancelGoogleSignIn, GoogleSignInCancelled, runGoogleSignIn } from "../google-sign-in";
 import { tokenStore } from "./token-store";
 
 /**
@@ -69,6 +70,34 @@ export function registerAuthHandlers(): void {
       return withoutTokens(response);
     })
   );
+
+  ipcMain.handle("api:providers", async () => run(() => ApiService.getAuthProviders()));
+
+  // Resolves with null when the user cancels, which is no error to show
+  ipcMain.handle("api:googleLogin", async (event) =>
+    run(async () => {
+      let grant;
+      try {
+        grant = await runGoogleSignIn();
+      } catch (error) {
+        if (error instanceof GoogleSignInCancelled) return null;
+        throw error;
+      }
+
+      // The user is in the browser: bring the app back
+      const win = BrowserWindow.fromWebContents(event.sender);
+      if (win) {
+        if (win.isMinimized()) win.restore();
+        win.focus();
+      }
+
+      const response = await ApiService.exchangeGoogleCode(grant.code, grant.codeVerifier);
+      tokenStore.set(response.data.session);
+      return withoutTokens(response);
+    })
+  );
+
+  ipcMain.handle("api:cancelGoogleLogin", async () => run(async () => cancelGoogleSignIn()));
 
   ipcMain.handle("api:me", async (_event, accessToken?: string) =>
     run(() => ApiService.getCurrentUser(tokenStore.resolveAccessToken(accessToken)))

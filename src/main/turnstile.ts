@@ -21,6 +21,8 @@ import { config } from "../config/config";
 // Same as the web app: long enough for a visitor who does get the checkbox
 const TOKEN_WAIT_MS = 30_000;
 const INTERACTION_WAIT_MS = 120_000;
+// Widget errors tolerated (each retried by Cloudflare) before giving up
+const MAX_FAILURES = 3;
 
 const SCRIPT_SRC =
   "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=onTurnstileLoad";
@@ -42,6 +44,9 @@ function pageHtml(siteKey: string): string {
 <div id="widget"></div>
 <script>
   let settle, markInteractive;
+  let failures = 0;
+  // Site key, hostname or browser refused: retrying cannot help
+  const FATAL = /^(1101|1102|1105|4000)/;
   // Read by main with executeJavaScript, which waits for a promise to settle
   window.turnstileResult = new Promise((resolve) => (settle = resolve));
   window.turnstileInteractive = new Promise((resolve) => (markInteractive = resolve));
@@ -50,8 +55,14 @@ function pageHtml(siteKey: string): string {
       sitekey: ${key},
       appearance: "interaction-only",
       callback: (token) => settle({ token }),
-      "error-callback": (code) => { settle({ error: String(code) }); return true; },
-      "timeout-callback": () => settle({ error: "timeout" }),
+      // Most errors are retried by the widget itself (retry: "auto"), and an
+      // expired challenge refreshes itself: settling on the first one threw
+      // away the token the user went on to earn
+      "error-callback": (code) => {
+        code = String(code);
+        if (FATAL.test(code) || ++failures >= ${MAX_FAILURES}) settle({ error: code });
+        return true;
+      },
       "before-interactive-callback": () => markInteractive(),
     });
   };
@@ -76,12 +87,19 @@ function getTurnstileSession(): Session {
 }
 
 /**
- * A token for one API call (a token works once). Undefined when Turnstile is
- * off (no site key) or the check failed or was closed; the API then answers
- * CAPTCHA_REQUIRED, which the login form shows.
+ * A token for one API call (a token works once). No token when Turnstile is
+ * off (no site key), the user left the check ("abandoned") or Cloudflare
+ * refused it ("failed"). The call goes ahead anyway, as the API may not ask
+ * for one; when it does it answers CAPTCHA_REQUIRED, and `failed` lets the
+ * caller say the check failed instead of that it was skipped.
  */
-export async function getTurnstileToken(parent?: BrowserWindow | null): Promise<string | undefined> {
-  if (!config.turnstile.siteKey) return undefined;
+export interface TurnstileResult {
+  token?: string;
+  failed?: "abandoned" | "failed";
+}
+
+export async function getTurnstileToken(parent?: BrowserWindow | null): Promise<TurnstileResult> {
+  if (!config.turnstile.siteKey) return {};
 
   const win = new BrowserWindow({
     parent: parent ?? undefined,
@@ -114,26 +132,29 @@ export async function getTurnstileToken(parent?: BrowserWindow | null): Promise<
       baseURLForDataURL: config.turnstile.pageUrl,
     });
 
-    return await new Promise<string | undefined>((resolve) => {
+    return await new Promise<TurnstileResult>((resolve) => {
       let settled = false;
-      const finish = (token: string | undefined) => {
+      const finish = (result: TurnstileResult) => {
         settled = true;
-        resolve(token);
+        resolve(result);
       };
-      const giveUp = (reason: string) => {
+      const giveUp = (failed: "abandoned" | "failed", reason: string) => {
         if (settled) return;
         console.warn(`[Turnstile] No token: ${reason}`);
-        finish(undefined);
+        finish({ failed });
       };
-      timer = setTimeout(() => giveUp("timed out"), TOKEN_WAIT_MS);
-      win.on("closed", () => giveUp("window closed"));
+      timer = setTimeout(() => giveUp("failed", "timed out"), TOKEN_WAIT_MS);
+      win.on("closed", () => giveUp("abandoned", "window closed"));
 
       win.webContents
         .executeJavaScript("window.turnstileInteractive")
         .then(() => {
           if (settled || win.isDestroyed()) return;
           clearTimeout(timer);
-          timer = setTimeout(() => giveUp("timed out waiting for the user"), INTERACTION_WAIT_MS);
+          timer = setTimeout(
+            () => giveUp("abandoned", "timed out waiting for the user"),
+            INTERACTION_WAIT_MS
+          );
           win.show();
         })
         .catch(() => {});
@@ -141,14 +162,14 @@ export async function getTurnstileToken(parent?: BrowserWindow | null): Promise<
       win.webContents
         .executeJavaScript("window.turnstileResult")
         .then((result: { token?: string; error?: string }) => {
-          if (result?.token) finish(result.token);
-          else giveUp(`Cloudflare error ${result?.error ?? "unknown"}`);
+          if (result?.token) finish({ token: result.token });
+          else giveUp("failed", `Cloudflare error ${result?.error ?? "unknown"}`);
         })
-        .catch((error) => giveUp(error instanceof Error ? error.message : String(error)));
+        .catch((error) => giveUp("failed", error instanceof Error ? error.message : String(error)));
     });
   } catch (error) {
     console.error("[Turnstile] Check page failed:", error);
-    return undefined;
+    return { failed: "failed" };
   } finally {
     clearTimeout(timer);
     if (!win.isDestroyed()) win.destroy();

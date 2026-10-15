@@ -58,12 +58,26 @@ export function registerAuthHandlers(): void {
   ipcMain.handle("api:login", async (event, credentials: { email: string; password: string }) =>
     run(async () => {
       // Main runs the check itself: the renderer neither supplies nor sees the token
-      const captchaToken = await getTurnstileToken(BrowserWindow.fromWebContents(event.sender));
-      const response = await ApiService.login({
-        email: credentials.email,
-        password: credentials.password,
-        captchaToken,
-      });
+      const check = await getTurnstileToken(BrowserWindow.fromWebContents(event.sender));
+      let response;
+      try {
+        response = await ApiService.login({
+          email: credentials.email,
+          password: credentials.password,
+          captchaToken: check.token,
+        });
+      } catch (error) {
+        // The user did the check but Cloudflare gave no token: "complete the
+        // security check" would blame them for something they did
+        if (
+          check.failed === "failed" &&
+          error instanceof CodedError &&
+          error.code === "CAPTCHA_REQUIRED"
+        ) {
+          throw new CodedError(error.message, "CAPTCHA_FAILED", error.status);
+        }
+        throw error;
+      }
       const session = response.data?.session;
 
       if (session?.accessToken) {

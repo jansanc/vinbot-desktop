@@ -1,4 +1,4 @@
-import { BrowserWindow, session, type Session } from "electron";
+import { app, BrowserWindow, session, type Session } from "electron";
 import { config } from "../config/config";
 
 /**
@@ -81,6 +81,19 @@ function getTurnstileSession(): Session {
   // Nothing the check needs; matches the default session
   ses.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
   ses.setPermissionCheckHandler(() => false);
+
+  // Electron's UA names the app and Electron ("Vinbot Authenticator/1.2.1
+  // Electron/44.4.5"), which Cloudflare's challenge fails as "Verification
+  // failed". What is left is the Chrome it really is, same version, so it
+  // still matches the client hints the browser sends.
+  ses.setUserAgent(
+    ses
+      .getUserAgent()
+      .replace(`${app.getName()}/${app.getVersion()}`, "")
+      .replace(/\bElectron\/\S+/, "")
+      .replace(/\s{2,}/g, " ")
+      .trim()
+  );
 
   turnstileSession = ses;
   return ses;

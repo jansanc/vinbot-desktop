@@ -46,8 +46,9 @@ export const config = {
   },
   turnstile: {
     siteKey: process.env.VINBOT_TURNSTILE_SITE_KEY || PRODUCTION_TURNSTILE_SITE_KEY,
-    // Where the check page appears to live (see src/main/turnstile.ts). Its
-    // hostname must be one the site key allows in the Cloudflare dashboard.
+    // The web app's check page, opened in the user's browser (see
+    // src/main/turnstile.ts). Its hostname must be one the site key allows in
+    // the Cloudflare dashboard.
     pageUrl:
       process.env.VINBOT_TURNSTILE_PAGE_URL || "https://start.vinbot.app/desktop-turnstile",
   },

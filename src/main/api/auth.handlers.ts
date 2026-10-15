@@ -58,7 +58,13 @@ export function registerAuthHandlers(): void {
   ipcMain.handle("api:login", async (event, credentials: { email: string; password: string }) =>
     run(async () => {
       // Main runs the check itself: the renderer neither supplies nor sees the token
-      const check = await getTurnstileToken(BrowserWindow.fromWebContents(event.sender));
+      const check = await getTurnstileToken();
+      // The check was in the browser: bring the app back
+      const win = BrowserWindow.fromWebContents(event.sender);
+      if (check.token && win) {
+        if (win.isMinimized()) win.restore();
+        win.focus();
+      }
       let response;
       try {
         response = await ApiService.login({

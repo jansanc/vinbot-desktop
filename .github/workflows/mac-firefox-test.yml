@@ -89,7 +89,7 @@ jobs:
       - name: Report
         if: always()
         run: |
-          for f in "$RUNNER_TEMP"/[0-9]-*.log; do
+          for f in "$RUNNER_TEMP"/[0-9]*.log; do
             body=$(tail -c 30000 "$f" | cut -c1-300 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
             echo "::notice title=${{ matrix.arch }} $(basename "$f")::$body"
           done

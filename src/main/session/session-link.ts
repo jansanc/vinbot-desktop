@@ -20,7 +20,7 @@ export interface LinkSessionResult {
  * authenticated" with the user left on the page. Tell the renderer directly.
  */
 function signalUnauthorized(sender: Electron.WebContents, error: unknown): void {
-  if (!(error instanceof UnauthorizedError)) return;
+  if (!(error instanceof UnauthorizedError) || sender.isDestroyed()) return;
   sender.send("auth:unauthorized", { message: error.message });
 }
 
@@ -48,9 +48,10 @@ export async function linkSession(
   // The renderer's token can be long expired by now (see freshAccessToken).
   let accessToken: string;
   try {
-    accessToken = await tokenStore.freshAccessToken(undefined, (session) =>
-      event.sender.send("auth:session-refreshed", redactSession(session))
-    );
+    accessToken = await tokenStore.freshAccessToken(undefined, (session) => {
+      // The window may have been closed during the login (macOS keeps the app running)
+      if (!event.sender.isDestroyed()) event.sender.send("auth:session-refreshed", redactSession(session));
+    });
   } catch (error) {
     console.error(`[Session] Could not get a valid access token: ${errorMessage(error)}`);
     signalUnauthorized(event.sender, error);

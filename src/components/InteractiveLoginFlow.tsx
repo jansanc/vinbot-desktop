@@ -25,7 +25,7 @@ interface InteractiveLoginFlowProps {
 }
 
 export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({ userId = "" }) => {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [vintedEmail, setVintedEmail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [steps, setSteps] = useState<Step[]>([]);
@@ -49,6 +49,8 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({ user
         return t("session.errorNotLoggedIn");
       case "FIREFOX_NOT_FOUND":
         return t(isMac ? "session.errorFirefoxNotFoundMac" : "session.errorFirefoxNotFound");
+      case "FIREFOX_FAILED":
+        return t("session.errorFirefoxFailed", { message: response.message });
       case "SESSION_EXPIRED":
         return t("session.sessionExpired");
       case "LOGIN_IN_PROGRESS":
@@ -68,6 +70,8 @@ export const InteractiveLoginFlow: React.FC<InteractiveLoginFlowProps> = ({ user
       const response = await window.electronAPI.interactiveLogin({
         userEmail: userId.trim(),
         vintedEmail: vintedEmail.trim(),
+        // So Firefox asks Vinted and the sign-in pages for the user's language
+        locale,
       });
       if (response.success) {
         setSaved(true);

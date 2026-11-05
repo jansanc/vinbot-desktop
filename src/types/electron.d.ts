@@ -13,7 +13,7 @@ declare global {
   type InteractiveLoginResponse = {
     success: boolean;
     message: string;
-    code?: "LOGIN_TIMEOUT" | "LOGIN_CANCELLED" | "FIREFOX_NOT_FOUND" | "NOT_LOGGED_IN" | "SESSION_EXPIRED" | "LOGIN_IN_PROGRESS";
+    code?: "LOGIN_TIMEOUT" | "LOGIN_CANCELLED" | "FIREFOX_NOT_FOUND" | "FIREFOX_FAILED" | "NOT_LOGGED_IN" | "SESSION_EXPIRED" | "LOGIN_IN_PROGRESS";
   };
 
   interface Window {
@@ -50,6 +50,8 @@ declare global {
         userEmail: string;
         vintedEmail: string;
         vintedMemberId?: string;
+        /** The app's language (a Locale); sets Firefox's Accept-Language. */
+        locale?: string;
       }) => Promise<InteractiveLoginResponse>;
       cancelInteractiveLogin: () => Promise<{ ok: true }>;
       onInteractiveLoginProgress: (

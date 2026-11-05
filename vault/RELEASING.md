@@ -1,7 +1,8 @@
 # Releasing
 
-The app ships for Windows (x64) and macOS (one universal build for Intel and
-Apple Silicon, macOS 12+).
+The app ships for Windows (x64) and macOS 12+, as two builds: one for Apple
+Silicon (arm64) and one for Intel (x64). A single universal build carried both
+copies of Electron, and was twice the download (408 MB zipped).
 
 ## Build
 
@@ -30,8 +31,9 @@ builds the renderer and packages it into `dist-app/`:
 | --- | --- |
 | `Vinbot-Authenticator-Setup-<version>.exe` | Windows installer: per-user, no admin needed, lets the user pick the folder, adds Start menu and desktop shortcuts and an uninstaller. Give this one to Windows users. |
 | `Vinbot-Authenticator-Portable-<version>.exe` | Windows, runs without installing. |
-| `Vinbot-Authenticator-<version>-mac.dmg` | macOS: open it, drag the app to Applications. Give this one to Mac users. |
-| `Vinbot-Authenticator-<version>-mac.zip` | macOS, the same app zipped. |
+| `Vinbot-Authenticator-<version>-mac-arm64.dmg` | macOS on Apple Silicon (M1 and later): open it, drag the app to Applications. Give this one to most Mac users. |
+| `Vinbot-Authenticator-<version>-mac-x64.dmg` | macOS on Intel Macs. |
+| `Vinbot-Authenticator-<version>-mac-<arch>.zip` | macOS, the same apps zipped; also what installed copies update from (each Mac takes its own architecture). |
 | `latest*.yml`, `*.blockmap` | What installed apps read to find and download an update. Always publish them with the installers. |
 
 ## Updates
@@ -157,14 +159,22 @@ to `resources/firefox`. Pin a version with `FIREFOX_VERSION=158.0`.
 ## Platform notes
 
 - On macOS, closing Firefox's last window doesn't quit it. The login watches
-  for the window to close (with `osascript`) and then quits Firefox itself.
-  Quitting with ⌘Q always works, and the app tells Mac users so.
+  for the window to close (with `osascript`, which needs no permission) and
+  then quits Firefox itself with SIGTERM (SIGKILL 10s later if it's still
+  running). Not an Apple event, as ⌘Q sends: that would ask the user for
+  Automation permission. Quitting with ⌘Q always works, and the app tells Mac
+  users so.
+- On macOS the app offers to move itself to Applications when run from
+  anywhere else (the mounted DMG, Downloads). Firefox has its own handling for
+  running from a disk image, and updates need the app in Applications.
 
 ## Smoke test before sending
 
 On a clean machine of each OS, **without Firefox installed**: install, log
 in, and run one "Open Firefox and log in" flow end to end. On macOS, check that
-closing the Firefox window (not ⌘Q) saves the session.
+closing the Firefox window (not ⌘Q) saves the session, that no "wants to
+control Firefox" permission prompt appears, and that opening the app from the
+mounted DMG offers to move it to Applications.
 
 ## Troubleshooting
 

@@ -151,13 +151,15 @@
         {
           "target": "dmg",
           "arch": [
-            "universal"
+            "x64",
+            "arm64"
           ]
         },
         {
           "target": "zip",
           "arch": [
-            "universal"
+            "x64",
+            "arm64"
           ]
         }
       ],
@@ -168,10 +170,7 @@
       "entitlements": "build-resources/entitlements.mac.plist",
       "entitlementsInherit": "build-resources/entitlements.mac.plist",
       "minimumSystemVersion": "12.0",
-      "extendInfo": {
-        "NSAppleEventsUsageDescription": "Vinbot Authenticator asks the Firefox login window it opened to quit, so your session is saved."
-      },
-      "artifactName": "Vinbot-Authenticator-${version}-mac.${ext}",
+      "artifactName": "Vinbot-Authenticator-${version}-mac-${arch}.${ext}",
       "extraResources": [
         {
           "from": "vendor/firefox",

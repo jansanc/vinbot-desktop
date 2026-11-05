@@ -108,10 +108,13 @@ const createWindow = () => {
   });
 };
 
+/** The main process's modules (dist/main/ipc-handlers.js), once loaded. */
+let ipcHandlers = null;
+
 const registerIPC = () => {
   try {
     console.log("[IPC] Loading ipc-handlers from:", require.resolve("../dist/main/ipc-handlers.js"));
-    const ipcHandlers = require("../dist/main/ipc-handlers.js");
+    ipcHandlers = require("../dist/main/ipc-handlers.js");
     console.log("[IPC] Loaded ipcHandlers:", Object.keys(ipcHandlers));
     if (typeof ipcHandlers.registerIPCHandlers === "function") {
       console.log("[IPC] Calling registerIPCHandlers function...");
@@ -141,14 +144,35 @@ if (!isPrimaryInstance) {
 
 console.log("[Electron] Waiting for app ready...");
 
-app.on("ready", () => {
+app.on("ready", async () => {
   if (!isPrimaryInstance) return;
   console.log("[Electron] App ready!");
   // The app needs no camera, notifications, geolocation, ...
   session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
   session.defaultSession.setPermissionCheckHandler(() => false);
   registerIPC();
+  // macOS, run from the DMG or Downloads: offer to move to Applications. When
+  // the user accepts, the app relaunches from there and this copy quits.
+  try {
+    if (await ipcHandlers?.offerMoveToApplications?.()) return;
+  } catch (error) {
+    console.error("[Electron] Move to Applications failed:", error);
+  }
   createWindow();
+});
+
+// Quitting during a login: close its Firefox and let it delete the temp
+// profile first. Firefox runs detached, so it would otherwise stay open on its
+// own, and the profile (with the user's Vinted cookies) stay on disk.
+let loginEnded = false;
+app.on("before-quit", (event) => {
+  if (loginEnded) return;
+  const ending = ipcHandlers?.endActiveLogin?.();
+  if (!ending) return;
+  event.preventDefault();
+  loginEnded = true;
+  console.log("[Electron] Ending the login in progress before quitting...");
+  ending.finally(() => app.quit());
 });
 
 app.on("window-all-closed", () => {

@@ -1,5 +1,6 @@
 import { registerAuthHandlers } from "./api/auth.handlers";
-import { registerLoginHandlers } from "./session/login.handlers";
+import { endActiveLogin, registerLoginHandlers } from "./session/login.handlers";
+import { offerMoveToApplications } from "./applications-folder";
 import { startUpdater } from "./updater";
 
 /**
@@ -21,4 +22,4 @@ function registerIPCHandlers() {
   console.log("[IPC] All handlers registered successfully!");
 }
 
-module.exports = { registerIPCHandlers };
+module.exports = { registerIPCHandlers, endActiveLogin, offerMoveToApplications };

@@ -9,6 +9,7 @@ import {
   type VintedCookie,
   type VintedLoginState,
 } from "./firefoxCookies";
+import type { Locale } from "../../../i18n/messages";
 
 export type { VintedCookie } from "./firefoxCookies";
 
@@ -19,14 +20,34 @@ export interface InteractiveLoginOptions {
   url: string;
   /** Seconds the user has to log in. */
   timeout?: number;
+  /** The app's language, for the languages Firefox asks websites for. */
+  locale?: Locale;
   onStatus?: (status: LoginStatus) => void;
 }
+
+/**
+ * What Firefox sends as Accept-Language for each app language. The bundled
+ * Firefox is the en-US build, which would otherwise ask every site (Vinted,
+ * the Google and Apple sign-in pages) for English.
+ */
+const ACCEPT_LANGUAGES: Record<Locale, string> = {
+  es: "es-ES, es, en-US, en",
+  ca: "ca, es-ES, es, en-US, en",
+  fr: "fr-FR, fr, en-US, en",
+  en: "en-US, en",
+};
 
 /**
  * Why a login ended without a session, for the window to explain in the
  * user's language. Anything else is reported with its (English) message.
  */
-export type LoginFlowErrorCode = "LOGIN_TIMEOUT" | "LOGIN_CANCELLED" | "FIREFOX_NOT_FOUND" | "NOT_LOGGED_IN";
+export type LoginFlowErrorCode =
+  | "LOGIN_TIMEOUT"
+  | "LOGIN_CANCELLED"
+  | "FIREFOX_NOT_FOUND"
+  /** Firefox couldn't be started, or quit by itself before the user could log in. */
+  | "FIREFOX_FAILED"
+  | "NOT_LOGGED_IN";
 
 export class LoginFlowError extends Error {
   constructor(public readonly code: LoginFlowErrorCode, message: string) {
@@ -67,6 +88,35 @@ const LOGIN_POLL_MS = 1500;
 const LOGGED_IN_SETTLE_MS = 2500;
 
 /**
+ * Firefox gone this soon after launch, without a login, wasn't closed by the
+ * user: Vinted's page alone takes ~2-3s to show. It's Firefox failing to
+ * start (e.g. macOS refusing to run it), not "closed before logging in".
+ */
+const QUICK_EXIT_MS = 5000;
+
+/** How Firefox's process ended, as reported by its 'exit' event. */
+export interface FirefoxExit {
+  code: number | null;
+  signal: NodeJS.Signals | null;
+  /** How long it ran, from launch to exit. */
+  runMs: number;
+}
+
+/**
+ * Why Firefox's exit looks like a failure rather than the user closing the
+ * window, or null when it looks normal. Closing the window or quitting
+ * (including the quit this app sends on macOS) exits with code 0.
+ */
+export function abnormalExit(exit: FirefoxExit | null): string | null {
+  if (!exit) return null;
+  const after = `after ${(exit.runMs / 1000).toFixed(1)}s`;
+  if (exit.signal) return `killed by ${exit.signal} ${after}`;
+  if (exit.code !== null && exit.code !== 0) return `exit code ${exit.code} ${after}`;
+  if (exit.runMs < QUICK_EXIT_MS) return `quit ${after}`;
+  return null;
+}
+
+/**
  * JXA (osascript -l JavaScript): how many normal windows (layer 0) the process
  * with pid argv[0] has. CGWindowListCopyWindowInfo gives owner pids and layers
  * without the Screen Recording permission (only window titles need that).
@@ -86,13 +136,8 @@ function run(argv) {
   ).length;
 }`;
 
-/** JXA: ask the app with pid argv[0] to quit, exactly as ⌘Q would. */
-const MAC_QUIT_SCRIPT = `
-ObjC.import("AppKit");
-function run(argv) {
-  const app = $.NSRunningApplication.runningApplicationWithProcessIdentifier(Number(argv[0]));
-  return app.isNil() ? false : app.terminate;
-}`;
+/** How long Firefox gets to quit after SIGTERM before it is killed. */
+const QUIT_GRACE_MS = 10000;
 
 /**
  * Firefox's startup cache, kept between logins.
@@ -176,6 +221,8 @@ export class InteractiveSessionExtractor {
   private cancelLogin: (() => void) | null = null;
   /** Windows: the login's Firefox browser process, once found (see findWindowsBrowserPids). */
   private windowsBrowserPids: string[] = [];
+  /** macOS/Linux: this app signalled Firefox to quit, so how it exited says nothing about Firefox failing. */
+  private quitSignalled = false;
 
   /** Close the login window without saving. Nothing happens once Firefox has closed. */
   cancel(): void {
@@ -249,9 +296,11 @@ export class InteractiveSessionExtractor {
    * with userChrome.css, which Firefox only loads when
    * toolkit.legacyUserProfileCustomizations.stylesheets is on.
    */
-  private prepareFirefoxProfile(profilePath: string): void {
+  private prepareFirefoxProfile(profilePath: string, locale: Locale | undefined): void {
     const now = Date.now();
     const prefs: Record<string, string | number | boolean> = {
+      // The user's language for the pages, not the bundled build's English
+      ...(locale ? { "intl.accept_languages": ACCEPT_LANGUAGES[locale] } : {}),
       // First-run and upgrade pages
       "browser.aboutwelcome.enabled": false,
       "browser.startup.homepage_override.mstone": "ignore",
@@ -465,13 +514,14 @@ export class InteractiveSessionExtractor {
    * On macOS closing Firefox's last window doesn't quit it: Firefox keeps
    * running with only its menu bar, and the login would wait for an exit that
    * never comes (then time out and throw the session away). So once the login
-   * window has been seen and is then gone, quit Firefox the way ⌘Q would -
-   * which is also what makes it write everything out to the profile.
+   * window has been seen and is then gone, quit Firefox (see quitUnix).
    *
    * Anything unexpected (osascript failing, the window never showing up in the
    * list) leaves it doing nothing: quitting with ⌘Q still ends the login.
    */
-  private watchForClosedMacWindow(pid: number, hasExited: () => boolean): void {
+  private watchForClosedMacWindow(browserProc: ChildProcess, hasExited: () => boolean): void {
+    const pid = browserProc.pid;
+    if (!pid) return;
     let seenWindow = false;
     let emptyPolls = 0;
     let failures = 0;
@@ -497,10 +547,46 @@ export class InteractiveSessionExtractor {
         // Two empty polls in a row, so a window being replaced doesn't count.
         if (!seenWindow || ++emptyPolls < 2) continue;
         console.log(`[InteractiveLogin] Login window closed; quitting Firefox`);
-        await this.runJxa(MAC_QUIT_SCRIPT, String(pid));
+        await this.quitUnix(browserProc, hasExited);
         return;
       }
     })();
+  }
+
+  /**
+   * macOS and Linux: SIGTERM to Firefox, then SIGKILL to it and everything it
+   * started if it hasn't exited after QUIT_GRACE_MS, so a login can never wait
+   * forever on a Firefox that won't quit.
+   *
+   * A signal, not an Apple event (as ⌘Q would send): an Apple event to another
+   * app asks the user for Automation permission ("wants to control Firefox"),
+   * at the very moment the login finishes, and again after every reinstall of
+   * an ad-hoc signed build. Nothing is lost if Firefox doesn't shut down
+   * cleanly: every cookie it has committed is on disk, in cookies.sqlite or
+   * its WAL, and readVintedCookies reads both.
+   */
+  private async quitUnix(browserProc: ChildProcess, hasExited: () => boolean): Promise<void> {
+    const pid = browserProc.pid;
+    if (!pid || hasExited()) return;
+    this.quitSignalled = true;
+    try {
+      process.kill(pid, "SIGTERM");
+    } catch (e) {
+      console.warn(`[InteractiveLogin] Failed to send SIGTERM to Firefox: ${e}`);
+    }
+    if (await this.waitForExit(hasExited, QUIT_GRACE_MS)) return;
+
+    console.warn(`[InteractiveLogin] Firefox did not quit within ${QUIT_GRACE_MS / 1000}s, killing it`);
+    try {
+      // Firefox was spawned detached, so it leads a process group with its children
+      process.kill(-pid, "SIGKILL");
+    } catch {
+      try {
+        browserProc.kill("SIGKILL");
+      } catch (e) {
+        console.warn(`[InteractiveLogin] Failed to kill Firefox: ${e}`);
+      }
+    }
   }
 
   /**
@@ -519,51 +605,35 @@ export class InteractiveSessionExtractor {
     const pid = browserProc.pid;
     if (!pid) return;
 
-    if (process.platform === "darwin") {
-      await this.runJxa(MAC_QUIT_SCRIPT, String(pid));
-      if (await this.waitForExit(hasExited, 10000)) return;
-      console.warn(`[InteractiveLogin] Firefox did not quit within 10s, forcing it`);
-    }
-
-    if (process.platform === "win32") {
-      // Close the window the way the user would, so Firefox shuts down cleanly
-      // and writes everything to the profile. taskkill without /F does that,
-      // but only to the browser process itself (the launcher, browserProc,
-      // refuses: it has no window), found while the user was logging in.
-      // Until then, PowerShell finds and closes it: ~1.6s, most of it starting
-      // PowerShell, which is why it no longer runs on every close.
-      const browserPids = this.windowsBrowserPids;
-      const closedByPid =
-        browserPids.length > 0 &&
-        (await Promise.all(browserPids.map((p) => this.run("taskkill", ["/pid", p])))).some((ok) => ok);
-      if (!closedByPid) {
-        const script =
-          `Get-CimInstance Win32_Process -Filter "Name='firefox.exe'" | ` +
-          `Where-Object { $_.CommandLine -like '*${profilePath.replace(/'/g, "''")}*' } | ` +
-          `ForEach-Object { (Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue).CloseMainWindow() } | Out-Null`;
-        await this.run("powershell", ["-NoProfile", "-NonInteractive", "-Command", script]);
-      }
-
-      const graceMs = 10000;
-      if (await this.waitForExit(hasExited, graceMs)) return;
-
-      console.warn(`[InteractiveLogin] Browser did not close within ${graceMs / 1000}s, forcing it`);
-      const forced = spawnSync("taskkill", ["/pid", String(pid), "/T", "/F"], { stdio: "ignore" });
-      if (forced.status !== 0) {
-        console.warn(`[InteractiveLogin] taskkill /F exited with status ${forced.status}`);
-      }
+    if (process.platform !== "win32") {
+      await this.quitUnix(browserProc, hasExited);
       return;
     }
 
-    try {
-      process.kill(-pid, "SIGTERM");
-    } catch (e) {
-      console.warn(`[InteractiveLogin] Failed to terminate browser: ${e}`);
-      try {
-        browserProc.kill("SIGKILL");
-      } catch (e2) {
-        console.warn(`[InteractiveLogin] Failed to force kill: ${e2}`);
-      }
+    // Close the window the way the user would, so Firefox shuts down cleanly
+    // and writes everything to the profile. taskkill without /F does that,
+    // but only to the browser process itself (the launcher, browserProc,
+    // refuses: it has no window), found while the user was logging in.
+    // Until then, PowerShell finds and closes it: ~1.6s, most of it starting
+    // PowerShell, which is why it no longer runs on every close.
+    const browserPids = this.windowsBrowserPids;
+    const closedByPid =
+      browserPids.length > 0 &&
+      (await Promise.all(browserPids.map((p) => this.run("taskkill", ["/pid", p])))).some((ok) => ok);
+    if (!closedByPid) {
+      const script =
+        `Get-CimInstance Win32_Process -Filter "Name='firefox.exe'" | ` +
+        `Where-Object { $_.CommandLine -like '*${profilePath.replace(/'/g, "''")}*' } | ` +
+        `ForEach-Object { (Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue).CloseMainWindow() } | Out-Null`;
+      await this.run("powershell", ["-NoProfile", "-NonInteractive", "-Command", script]);
+    }
+
+    if (await this.waitForExit(hasExited, QUIT_GRACE_MS)) return;
+
+    console.warn(`[InteractiveLogin] Browser did not close within ${QUIT_GRACE_MS / 1000}s, forcing it`);
+    const forced = spawnSync("taskkill", ["/pid", String(pid), "/T", "/F"], { stdio: "ignore" });
+    if (forced.status !== 0) {
+      console.warn(`[InteractiveLogin] taskkill /F exited with status ${forced.status}`);
     }
   }
 
@@ -576,7 +646,7 @@ export class InteractiveSessionExtractor {
    * still saves the session, in case the login check ever misses one.
    */
   async interactiveLogin(options: InteractiveLoginOptions): Promise<InteractiveLoginResult> {
-    const { url, timeout = 300, onStatus } = options;
+    const { url, timeout = 300, locale, onStatus } = options;
 
     console.log(`[InteractiveLogin] URL: ${url}, Timeout: ${timeout}s`);
 
@@ -594,15 +664,18 @@ export class InteractiveSessionExtractor {
 
       // Phase 1: Launch Firefox for login
       console.log(`[InteractiveLogin] Phase 1: Launching Firefox for interactive login...`);
-      this.prepareFirefoxProfile(this.tempProfileDir);
+      this.prepareFirefoxProfile(this.tempProfileDir, locale);
       restoreWarmStartup(this.tempProfileDir);
       const launchedProfileDir = this.tempProfileDir;
+      const launchedAt = Date.now();
       const browserProc = this.launchFirefox(browserPath, launchedProfileDir, url);
       onStatus?.("waiting-for-login");
 
       let closed = false;
+      let exit: FirefoxExit | null = null;
+      let launchError: Error | null = null;
       if (process.platform === "darwin" && browserProc.pid) {
-        this.watchForClosedMacWindow(browserProc.pid, () => closed);
+        this.watchForClosedMacWindow(browserProc, () => closed);
       }
       if (process.platform === "win32" && browserProc.pid) {
         this.findWindowsBrowserPids(browserProc.pid, launchedProfileDir, () => closed);
@@ -621,10 +694,26 @@ export class InteractiveSessionExtractor {
         // Cleared once the window closes, so it doesn't sit armed (holding
         // this login's state) for the rest of the timeout.
         const timer = setTimeout(() => closeBrowser("timeout"), timeout * 1000);
-        browserProc.on("exit", () => {
+        const finish = () => {
           closed = true;
           clearTimeout(timer);
           resolve();
+        };
+        browserProc.on("exit", (code, signal) => {
+          exit = { code, signal, runMs: Date.now() - launchedAt };
+          console.log(`[InteractiveLogin] Firefox exited (code ${code}, signal ${signal})`);
+          finish();
+        });
+        // A start that fails (the executable missing or not runnable) comes
+        // only as 'error', never 'exit'. Without this listener it would be an
+        // uncaught exception in the main process, and the login would wait
+        // out the whole timeout for a window that never opened. Later errors
+        // (a failed kill) are only logged.
+        browserProc.on("error", (err) => {
+          console.error(`[InteractiveLogin] Firefox process error: ${err.message}`);
+          if (closed) return;
+          launchError = err;
+          finish();
         });
       });
       this.cancelLogin = () => closeBrowser("cancel");
@@ -648,6 +737,9 @@ export class InteractiveSessionExtractor {
 
       await waitForClose;
       this.cancelLogin = null;
+      if (launchError) {
+        throw new LoginFlowError("FIREFOX_FAILED", `Firefox could not be started (${(launchError as Error).message}).`);
+      }
       // However the login ended, Firefox has now written its startup cache
       saveWarmStartup(launchedProfileDir);
 
@@ -685,6 +777,12 @@ export class InteractiveSessionExtractor {
       // would keep nothing. That is the user closing the window before logging
       // in (once logged in, the window closes by itself).
       if (!hasCompleteVintedLogin(vintedCookies)) {
+        // Unless Firefox itself failed: then the user never had a window to log in with
+        // (not when this app quit it: the user closed the window on macOS)
+        const failure = closedBy === null && !this.quitSignalled ? abnormalExit(exit) : null;
+        if (failure) {
+          throw new LoginFlowError("FIREFOX_FAILED", `Firefox closed by itself (${failure}).`);
+        }
         throw new LoginFlowError(
           "NOT_LOGGED_IN",
           "Firefox was closed before you logged in to Vinted, so nothing was saved."

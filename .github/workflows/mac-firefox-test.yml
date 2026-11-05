@@ -70,8 +70,8 @@ jobs:
         run: |
           rm -rf vendor/firefox && mkdir -p vendor/firefox
           ditto "/Applications/Vinbot Authenticator.app/Contents/Resources/firefox/Firefox.app" vendor/firefox/Firefox.app
-          ( sleep 15; screencapture -x "$RUNNER_TEMP/login-15s.png"; osascript -l JavaScript scripts/mac-test/windows.js; ps -axo pid,ppid,etime,command | grep -i [f]irefox | cut -c1-200 ) &
-          LOGIN_TIMEOUT=40 npx electron scripts/mac-test/login-main.js 2>&1 2>&1 | grep -v "^\s*$" > "$RUNNER_TEMP/3-login.log"; cat "$RUNNER_TEMP/3-login.log"
+          ( sleep 15; screencapture -x "$RUNNER_TEMP/login-15s.png"; osascript -l JavaScript scripts/mac-test/windows.js; ps -axo pid,ppid,etime,command | grep -i [f]irefox | cut -c1-200 ) > "$RUNNER_TEMP/3b-during-login.log" 2>&1 &
+          LOGIN_TIMEOUT=40 npx electron scripts/mac-test/login-main.js 2>&1 | grep -v "^\s*$" > "$RUNNER_TEMP/3-login.log"; cat "$RUNNER_TEMP/3-login.log"
       - name: Launch the installed app itself and watch for crashes
         run: |
           exec > >(tee "$RUNNER_TEMP/4-app.log") 2>&1

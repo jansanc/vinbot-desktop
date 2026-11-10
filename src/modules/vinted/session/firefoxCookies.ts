@@ -208,6 +208,21 @@ export function vintedLoginState(cookies: VintedCookie[] | null): VintedLoginSta
 }
 
 /**
+ * The Vinted user the login is for: the subject of its user token (numeric).
+ * Used only to notice a login to a different account than the one named, so
+ * it is read from the refresh token the session is saved with.
+ */
+export function vintedMemberIdOf(cookies: VintedCookie[] | null): string | undefined {
+  for (const c of cookies ?? []) {
+    if (c.name !== "refresh_token_web") continue;
+    const claims = jwtClaims(c.value);
+    const sub = claims && isUserToken(claims) ? String(claims.sub ?? "") : "";
+    if (/^\d+$/.test(sub)) return sub;
+  }
+  return undefined;
+}
+
+/**
  * Whether the login is done and the session complete enough to save: an
  * unexpired refresh token for a user. Stricter than vintedLoginState, as it
  * decides when the login window closes on its own - the refresh token is what

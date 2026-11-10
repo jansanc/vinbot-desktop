@@ -96,6 +96,41 @@ export function registerAuthHandlers(): void {
 
   ipcMain.handle("api:providers", async () => run(() => ApiService.getAuthProviders()));
 
+  // "Confirm your email" again, for a sign-in refused as unconfirmed. Like
+  // login, the API wants a Turnstile token, which main gets in the browser.
+  ipcMain.handle("api:resendVerification", async (event, email: string) =>
+    run(async () => {
+      const check = await getTurnstileToken();
+      const win = BrowserWindow.fromWebContents(event.sender);
+      if (check.token && win) {
+        if (win.isMinimized()) win.restore();
+        win.focus();
+      }
+      await ApiService.resendVerification(email, check.token);
+    })
+  );
+
+  // The user's linked Vinted accounts, each with its session's stored verdict,
+  // for the window's "your Vinted accounts" list
+  ipcMain.handle("vinted:accounts", async (event) =>
+    run(async () => {
+      const accessToken = await tokenStore.freshAccessToken(undefined, (session) => {
+        if (!event.sender.isDestroyed()) event.sender.send("auth:session-refreshed", redactSession(session));
+      });
+      const accounts = await ApiService.getLinkedVintedAccounts(accessToken);
+      // A verdict that can't be read leaves the account "unknown", not the list empty
+      return Promise.all(
+        accounts.map(async (account) => ({
+          ...account,
+          sessionStatus: await ApiService.getVintedSessionStatus(accessToken, account.id).catch((error) => {
+            if (error instanceof UnauthorizedError) throw error;
+            return "unknown" as const;
+          }),
+        }))
+      );
+    })
+  );
+
   // Resolves with null when the user cancels, which is no error to show
   ipcMain.handle("api:googleLogin", async (event, requestedLocale?: string) =>
     run(async () => {

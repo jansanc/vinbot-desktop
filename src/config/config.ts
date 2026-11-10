@@ -38,9 +38,13 @@ export const config = {
         // Opened in the user's browser (src/main/google-sign-in.ts)
         googleStart: "/api/v1/auth/oauth/google",
         googleToken: "/api/v1/auth/oauth/desktop/token",
+        resendVerification: "/api/v1/auth/resend-verification",
       },
       vinted: {
         link: "/api/v1/vinted/auth/link",
+        linkedAccounts: "/api/v1/vinted/auth/linked-accounts",
+        // Per account with the X-Vinted-Account-Id header
+        sessionHealth: "/api/v1/integrations/vinted/session-health",
       },
     },
   },

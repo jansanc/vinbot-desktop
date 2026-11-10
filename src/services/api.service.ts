@@ -65,6 +65,19 @@ export interface DesktopSessionResponse {
   requestId: string;
 }
 
+/** A Vinted account linked to the user, as the API lists it (no session data). */
+export interface LinkedVintedAccount {
+  id: string;
+  vintedEmail: string;
+  lastLoginAt: string | null;
+  isPrimary: boolean;
+  /** Not covered by the user's plan any more */
+  isDisabled: boolean;
+}
+
+/** The stored verdict on an account's session (the web app's banner reads the same). */
+export type VintedSessionStatus = "healthy" | "unhealthy" | "unknown" | "not_connected";
+
 export class ApiService {
   private static handleAuthError(response: { status: number; statusText: string }): void {
     if (response.status === 401) {
@@ -129,6 +142,62 @@ export class ApiService {
       });
       throw error instanceof Error ? error : new Error(`Network error: ${errorMessage}`);
     }
+  }
+
+  /**
+   * Send the "confirm your email" message again. Throws a CodedError (with the
+   * API's code, e.g. a rate limit) when it is refused.
+   */
+  static async resendVerification(email: string, captchaToken?: string): Promise<void> {
+    const response = await fetch(`${config.api.baseUrl}${config.api.endpoints.auth.resendVerification}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, captchaToken }),
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => null);
+      throw new CodedError(
+        errorData?.data?.message || errorData?.message || "Could not resend the email",
+        errorData?.code,
+        response.status
+      );
+    }
+  }
+
+  /** The Vinted accounts linked to the signed-in user. */
+  static async getLinkedVintedAccounts(accessToken: string): Promise<LinkedVintedAccount[]> {
+    const response = await fetch(`${config.api.baseUrl}${config.api.endpoints.vinted.linkedAccounts}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    ApiService.handleAuthError(response);
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => null);
+      throw new CodedError(errorData?.message || "Could not list Vinted accounts", errorData?.code, response.status);
+    }
+    const data = await response.json();
+    const rows: any[] = Array.isArray(data?.data) ? data.data : [];
+    return rows.map((row) => ({
+      id: String(row.id),
+      vintedEmail: String(row.vintedEmail ?? ""),
+      lastLoginAt: row.lastLoginAt ?? null,
+      isPrimary: !!row.isPrimary,
+      isDisabled: !!row.isDisabled,
+    }));
+  }
+
+  /**
+   * One account's stored session verdict. Never asks the API to check against
+   * Vinted (that can start the backend's browser): only what it already knows.
+   */
+  static async getVintedSessionStatus(accessToken: string, vintedAccountId: string): Promise<VintedSessionStatus> {
+    const response = await fetch(`${config.api.baseUrl}${config.api.endpoints.vinted.sessionHealth}`, {
+      headers: { Authorization: `Bearer ${accessToken}`, "X-Vinted-Account-Id": vintedAccountId },
+    });
+    ApiService.handleAuthError(response);
+    if (!response.ok) return "unknown";
+    const data = await response.json().catch(() => null);
+    const status = data?.data?.status;
+    return status === "healthy" || status === "unhealthy" || status === "not_connected" ? status : "unknown";
   }
 
   /** Social sign-ins switched on at the API, e.g. { google: true } */

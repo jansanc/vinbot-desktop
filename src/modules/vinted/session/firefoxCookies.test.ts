@@ -7,6 +7,7 @@ import {
   hasCompleteVintedLogin,
   readVintedCookies,
   vintedLoginState,
+  vintedMemberIdOf,
   type VintedCookie,
 } from "./firefoxCookies";
 
@@ -57,6 +58,18 @@ describe("hasCompleteVintedLogin", () => {
   it("ignores an expired or unreadable refresh token", () => {
     expect(hasCompleteVintedLogin([cookie("refresh_token_web", jwt({ ...user, exp: now - 60 }))])).toBe(false);
     expect(hasCompleteVintedLogin([cookie("refresh_token_web", "not-a-jwt")])).toBe(false);
+  });
+});
+
+describe("vintedMemberIdOf", () => {
+  it("is the user the refresh token is for", () => {
+    expect(vintedMemberIdOf([cookie("refresh_token_web", jwt(user))])).toBe("123456");
+  });
+
+  it("is unknown for a visitor or without tokens", () => {
+    expect(vintedMemberIdOf([cookie("refresh_token_web", jwt(anonymous))])).toBeUndefined();
+    expect(vintedMemberIdOf([cookie("access_token_web", jwt(user))])).toBeUndefined();
+    expect(vintedMemberIdOf(null)).toBeUndefined();
   });
 });
 

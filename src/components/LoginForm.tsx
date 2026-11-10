@@ -1,18 +1,22 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import ThemeToggle from "./ThemeToggle";
 import LanguageSelect from "./LanguageSelect";
+import SetupSteps from "./SetupSteps";
 import { useI18n } from "../i18n/I18nContext";
 import type { MessageKey } from "../i18n/messages";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { config } from "../config/config";
+import { ApiBridge } from "../services/api.bridge";
 import { cn } from "@/lib/utils";
 
 interface LoginFormProps {
   onSubmit: (email: string, password: string) => Promise<void>;
   isLoading: boolean;
   error?: string;
+  /** The key `error` was made from, for the actions some errors offer */
+  errorKey?: MessageKey;
   /** "Continue with Google"; left out while the API has Google off */
   google?: {
     onSignIn: () => void;
@@ -78,6 +82,7 @@ export default function LoginForm({
   onSubmit,
   isLoading,
   error,
+  errorKey,
   google,
 }: LoginFormProps) {
   const [email, setEmail] = useState("");
@@ -86,6 +91,22 @@ export default function LoginForm({
   // A message key, so a language change while it is shown translates it
   const [localError, setLocalError] = useState<MessageKey | "">("");
   const { t } = useI18n();
+  // "Resend confirmation email", for a sign-in refused as unconfirmed
+  const [resend, setResend] = useState<"idle" | "sending" | "sent" | "failed">("idle");
+
+  // A new error is a new situation: the resend offer starts over
+  useEffect(() => setResend("idle"), [errorKey]);
+
+  const handleResend = async () => {
+    setResend("sending");
+    try {
+      await ApiBridge.resendVerification(email.trim());
+      setResend("sent");
+    } catch (err) {
+      console.warn("[Login] Could not resend the confirmation email:", err);
+      setResend("failed");
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -131,6 +152,9 @@ export default function LoginForm({
           <div className="flex flex-1 items-center justify-center py-4">
             <div className="w-full max-w-[24rem] animate-fade-in">
               <div className="mb-7">
+                <div className="mb-5">
+                  <SetupSteps current={1} />
+                </div>
                 <h1 className="display text-[30px]">{t("login.title")}</h1>
                 <p className="mt-2 text-[15px] leading-relaxed text-pretty text-muted-foreground">
                   {t("login.subtitle")}
@@ -161,6 +185,7 @@ export default function LoginForm({
                       {t("google.continue")}
                     </FormButton>
                   )}
+                  <p className="-mt-3 text-center text-xs text-muted-foreground">{t("google.hint")}</p>
                   <div className="flex items-center gap-3 text-xs text-muted-foreground" role="separator">
                     <span className="flex-1 border-t border-border" />
                     {t("google.or")}
@@ -176,6 +201,35 @@ export default function LoginForm({
                     className="rounded-lg border border-destructive/25 bg-destructive/8 px-3 py-2.5 text-sm leading-relaxed"
                   >
                     {shownError}
+                    {errorKey === "login.noSubscription" && (
+                      <a
+                        href={`${config.web.baseUrl}/pricing`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={cn(linkClass, "mt-1.5 block w-fit")}
+                      >
+                        {t("login.seePlans")}
+                      </a>
+                    )}
+                    {errorKey === "login.emailNotConfirmed" && email.trim() && (
+                      <div className="mt-1.5" aria-live="polite">
+                        {resend === "sent" ? (
+                          <span className="text-muted-foreground">{t("login.resent")}</span>
+                        ) : (
+                          <button
+                            type="button"
+                            className={cn(linkClass, "disabled:opacity-60")}
+                            onClick={handleResend}
+                            disabled={resend === "sending"}
+                          >
+                            {resend === "sending" ? t("login.resending") : t("login.resend")}
+                          </button>
+                        )}
+                        {resend === "failed" && (
+                          <span className="mt-1 block text-muted-foreground">{t("login.resendFailed")}</span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -189,6 +243,7 @@ export default function LoginForm({
                     placeholder={t("login.emailPlaceholder")}
                     disabled={isLoading}
                     autoComplete="email"
+                    autoFocus
                     required
                   />
                 </div>
@@ -212,8 +267,12 @@ export default function LoginForm({
                     onChange={(e) => setPassword(e.target.value)}
                     disabled={isLoading}
                     autoComplete="current-password"
+                    aria-describedby="password-hint"
                     required
                   />
+                  <p id="password-hint" className="text-xs text-muted-foreground">
+                    {t("login.passwordHint")}
+                  </p>
                 </div>
 
                 <FormButton type="submit" disabled={isLoading} busy={isLoading && !google?.isWaiting}>

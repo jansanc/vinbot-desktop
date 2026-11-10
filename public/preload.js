@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     login: (credentials) => ipcRenderer.invoke("api:login", credentials),
     // Google sign-in runs in the user's browser; main keeps the tokens
     providers: () => ipcRenderer.invoke("api:providers"),
+    resendVerification: (email) => ipcRenderer.invoke("api:resendVerification", email),
     googleLogin: (locale) => ipcRenderer.invoke("api:googleLogin", locale),
     cancelGoogleLogin: () => ipcRenderer.invoke("api:cancelGoogleLogin"),
     me: (accessToken) => ipcRenderer.invoke("api:me", accessToken),
@@ -46,6 +47,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // The Vinted login window (src/main/session/login.handlers.ts)
   interactiveLogin: (options) => ipcRenderer.invoke("vinted:interactiveLogin", options),
   cancelInteractiveLogin: () => ipcRenderer.invoke("vinted:cancelInteractiveLogin"),
+  confirmPendingLogin: () => ipcRenderer.invoke("vinted:confirmPendingLogin"),
+  discardPendingLogin: () => ipcRenderer.invoke("vinted:discardPendingLogin"),
+  vintedAccounts: () => ipcRenderer.invoke("vinted:accounts"),
   // Returns unsubscribe
   onInteractiveLoginProgress: (callback) => {
     const listener = (event, data) => callback(data);

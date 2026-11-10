@@ -65,6 +65,17 @@ export class ApiBridge {
     return unwrap(await bridge().providers());
   }
 
+  /** Sends the "confirm your email" message again (a browser check first). */
+  static async resendVerification(email: string): Promise<void> {
+    await unwrap(await bridge().resendVerification(email));
+  }
+
+  /** The signed-in user's linked Vinted accounts, with each session's state. */
+  static async vintedAccounts(): Promise<VintedAccountSummary[]> {
+    if (!window.electronAPI?.vintedAccounts) throw new Error("Electron bridge unavailable.");
+    return unwrap(await window.electronAPI.vintedAccounts());
+  }
+
   /** Null when the user cancelled. */
   static async loginWithGoogle(locale?: string): Promise<LoginResponse | null> {
     return unwrap(await bridge().googleLogin(locale));

@@ -64,7 +64,9 @@ export default function UserHeader({
               </span>
               <PlanBadge tier={user.subscriptionTier} />
             </div>
-            <p className="truncate text-xs text-muted-foreground">{user.email}</p>
+            <p className="truncate text-xs text-muted-foreground">
+              {t("header.vinbotAccount", { email: user.email })}
+            </p>
           </div>
         </div>
 

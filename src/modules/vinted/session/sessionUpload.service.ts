@@ -38,6 +38,10 @@ export interface LinkVintedAccountPayload {
   sessionData: Array<Record<string, unknown>>;
   sessionOrigins: Array<Record<string, unknown>>;
   browserFingerprint: Record<string, unknown>;
+  /** For an email already linked, replace its session and record the new
+   *  login time (without it the API keeps the old last_login_at). Ignored for
+   *  a new account. */
+  updateSessionOnly?: boolean;
 }
 
 export class SessionUploadService {
@@ -103,6 +107,7 @@ export class SessionUploadService {
         sessionData,
         sessionOrigins,
         browserFingerprint: {},
+        updateSessionOnly: true,
       };
 
       console.log("[SessionUploadService] Linking Vinted account with consolidated endpoint:", {

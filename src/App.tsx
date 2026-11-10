@@ -235,6 +235,7 @@ function AppContent() {
           onSubmit={handleLogin}
           isLoading={isAuthenticating}
           error={authError ? t(authError) : undefined}
+          errorKey={authError || undefined}
           google={
             googleEnabled
               ? {

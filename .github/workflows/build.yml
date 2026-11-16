@@ -25,7 +25,7 @@ jobs:
         include:
           - { os: windows-latest, name: Windows, script: dist:win }
           - { os: macos-latest, name: macOS, script: dist:mac }
-          # macOS 10.15 and 11 on Electron 32 (build-resources/mac-legacy.config.js)
+          # macOS 10.15 to 12 on Electron 32 (build-resources/mac-legacy.config.js)
           - { os: macos-latest, name: macOS-legacy, script: dist:mac-legacy }
     runs-on: ${{ matrix.os }}
     steps:

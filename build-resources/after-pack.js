@@ -14,6 +14,7 @@
 const fs = require("fs");
 const path = require("path");
 const { execFileSync } = require("child_process");
+const { Arch } = require("builder-util");
 
 const UNUSED_WINDOWS_FILES = ["dxcompiler.dll", "dxil.dll"];
 
@@ -46,8 +47,11 @@ function plistMinimumMacOS(plist) {
 }
 
 function checkMacMinimum(context) {
-  const claimed = context.packager.platformSpecificBuildOptions.minimumSystemVersion;
+  let claimed = context.packager.platformSpecificBuildOptions.minimumSystemVersion;
   if (!claimed) return;
+  // No Apple Silicon Mac runs anything older than macOS 11, so arm64 binaries
+  // are built for 11+ whatever the app claims
+  if (Arch[context.arch] === "arm64" && compareVersions(claimed, "11.0") < 0) claimed = "11.0";
   const app = path.join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`);
 
   const needs = [

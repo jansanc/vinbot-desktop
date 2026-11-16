@@ -84,14 +84,14 @@ function canUpdate(): boolean {
 }
 
 /**
- * The legacy Mac build (macOS 10.15 and 11, on an older Electron: see
+ * The legacy Mac build (macOS 10.15 to 12, on an older Electron: see
  * build-resources/mac-legacy.config.js) updates from its own channel,
  * legacy-mac.yml, so it never installs a build its macOS can't run. Once the
- * Mac is on macOS 12 or later (Darwin 21), it moves to the main build, which
+ * Mac is on macOS 13 or later (Darwin 22), it moves to the main build, which
  * has current Electron security fixes.
  */
 function moveLegacyMacToMainBuild(): void {
-  if (process.platform !== "darwin" || Number(os.release().split(".")[0]) < 21) return;
+  if (process.platform !== "darwin" || Number(os.release().split(".")[0]) < 22) return;
   let config: string;
   try {
     config = fs.readFileSync(path.join(process.resourcesPath, "app-update.yml"), "utf8");
@@ -102,7 +102,7 @@ function moveLegacyMacToMainBuild(): void {
   autoUpdater.channel = "latest";
   // Setting a channel allows downgrades; the main build is never older
   autoUpdater.allowDowngrade = false;
-  log("info", `Legacy build on macOS 12+ (Darwin ${os.release()}): updating from the main build`);
+  log("info", `Legacy build on macOS 13+ (Darwin ${os.release()}): updating from the main build`);
 }
 
 export function startUpdater(): void {

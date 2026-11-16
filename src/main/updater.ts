@@ -1,4 +1,5 @@
 import fs from "fs";
+import os from "os";
 import path from "path";
 import { app, BrowserWindow, ipcMain } from "electron";
 import { autoUpdater, type UpdateInfo } from "electron-updater";
@@ -82,6 +83,28 @@ function canUpdate(): boolean {
   return app.isPackaged && !process.env.PORTABLE_EXECUTABLE_DIR;
 }
 
+/**
+ * The legacy Mac build (macOS 10.15 and 11, on an older Electron: see
+ * build-resources/mac-legacy.config.js) updates from its own channel,
+ * legacy-mac.yml, so it never installs a build its macOS can't run. Once the
+ * Mac is on macOS 12 or later (Darwin 21), it moves to the main build, which
+ * has current Electron security fixes.
+ */
+function moveLegacyMacToMainBuild(): void {
+  if (process.platform !== "darwin" || Number(os.release().split(".")[0]) < 21) return;
+  let config: string;
+  try {
+    config = fs.readFileSync(path.join(process.resourcesPath, "app-update.yml"), "utf8");
+  } catch {
+    return;
+  }
+  if (!/^channel:\s*legacy\s*$/m.test(config)) return;
+  autoUpdater.channel = "latest";
+  // Setting a channel allows downgrades; the main build is never older
+  autoUpdater.allowDowngrade = false;
+  log("info", `Legacy build on macOS 12+ (Darwin ${os.release()}): updating from the main build`);
+}
+
 export function startUpdater(): void {
   // The window asks for the status on mount; answer even where updates are off
   ipcMain.handle("updater:getStatus", () => status);
@@ -105,6 +128,7 @@ export function startUpdater(): void {
     error: (message: unknown) => log("error", message),
     debug: () => {},
   };
+  moveLegacyMacToMainBuild();
   autoUpdater.autoDownload = true;
   // The NSIS installer is a full one, not a web stub
   autoUpdater.disableWebInstaller = true;

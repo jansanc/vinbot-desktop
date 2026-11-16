@@ -22,7 +22,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest]
+        include:
+          - { os: windows-latest, name: Windows, script: dist:win }
+          - { os: macos-latest, name: macOS, script: dist:mac }
+          # macOS 10.15 and 11 on Electron 32 (build-resources/mac-legacy.config.js)
+          - { os: macos-latest, name: macOS-legacy, script: dist:mac-legacy }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -55,7 +59,7 @@ jobs:
 
       - name: Build (Windows)
         if: runner.os == 'Windows'
-        run: npm run dist:win
+        run: npm run ${{ matrix.script }}
 
       - name: Build (macOS)
         if: runner.os == 'macOS'
@@ -68,18 +72,25 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          SCRIPT: ${{ matrix.script }}
         run: |
           if [ -n "$CSC_LINK" ]; then
-            npm run dist:mac
+            npm run "$SCRIPT"
           else
             echo "::warning::No Apple certificate configured; building an ad-hoc signed, un-notarized app"
             unset CSC_LINK CSC_KEY_PASSWORD
-            CSC_IDENTITY_AUTO_DISCOVERY=false npm run dist:mac -- -c.mac.identity=- -c.mac.hardenedRuntime=false
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+            if [ "$SCRIPT" = "dist:mac-legacy" ]; then
+              # Its config file can't be combined with -c.* overrides
+              MAC_ADHOC_SIGN=true npm run "$SCRIPT"
+            else
+              npm run "$SCRIPT" -- -c.mac.identity=- -c.mac.hardenedRuntime=false
+            fi
           fi
 
       - uses: actions/upload-artifact@v7
         with:
-          name: installers-${{ runner.os }}
+          name: installers-${{ matrix.name }}
           if-no-files-found: error
           path: |
             dist-app/*.exe
@@ -87,6 +98,7 @@ jobs:
             dist-app/*.zip
             dist-app/*.blockmap
             dist-app/latest*.yml
+            dist-app/legacy*.yml
 
   # A draft release in this (public) repo, which the apps read with no token.
   # Publishing the draft is what rolls the version out to every installed
@@ -106,5 +118,5 @@ jobs:
       - uses: softprops/action-gh-release@v3
         with:
           draft: true
-          # latest*.yml and *.blockmap are what the updater reads
+          # latest*.yml, legacy-mac.yml and *.blockmap are what the updater reads
           files: installers/*

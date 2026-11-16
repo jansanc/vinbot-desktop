@@ -1,8 +1,9 @@
 # Releasing
 
-The app ships for Windows (x64) and macOS 12+, as two builds: one for Apple
-Silicon (arm64) and one for Intel (x64). A single universal build carried both
-copies of Electron, and was twice the download (408 MB zipped).
+The app ships for Windows (x64) and macOS 10.15+. macOS 12+ gets two builds,
+one for Apple Silicon (arm64) and one for Intel (x64): a single universal
+build carried both copies of Electron, and was twice the download (408 MB
+zipped). macOS 10.15 and 11 get a third, the legacy build (see below).
 
 ## Build
 
@@ -23,6 +24,7 @@ own runner.
 
 - `npm run dist:win` on Windows
 - `npm run dist:mac` on a Mac
+- `npm run dist:mac-legacy` on a Mac, for macOS 10.15 and 11
 
 Each one cleans `dist/`, `build/` and `dist-app/`, compiles the main process,
 builds the renderer and packages it into `dist-app/`:
@@ -34,7 +36,9 @@ builds the renderer and packages it into `dist-app/`:
 | `Vinbot-Authenticator-<version>-mac-arm64.dmg` | macOS on Apple Silicon (M1 and later): open it, drag the app to Applications. Give this one to most Mac users. |
 | `Vinbot-Authenticator-<version>-mac-x64.dmg` | macOS on Intel Macs. |
 | `Vinbot-Authenticator-<version>-mac-<arch>.zip` | macOS, the same apps zipped; also what installed copies update from (each Mac takes its own architecture). |
-| `latest*.yml`, `*.blockmap` | What installed apps read to find and download an update. Always publish them with the installers. |
+| `Vinbot-Authenticator-<version>-mac-legacy-x64.dmg` | macOS 10.15 Catalina and 11 Big Sur (Intel). Only for Macs that can't run macOS 12. |
+| `Vinbot-Authenticator-<version>-mac-legacy-x64.zip` | The same, zipped; what installed legacy copies update from. |
+| `latest*.yml`, `legacy-mac.yml`, `*.blockmap` | What installed apps read to find and download an update. Always publish them with the installers. |
 
 ## Updates
 
@@ -156,6 +160,32 @@ to `resources/firefox`. Pin a version with `FIREFOX_VERSION=158.0`.
   Windows; `/Applications`, `~/Applications` or wherever Spotlight finds it
   on macOS.
 
+## Legacy Mac build (macOS 10.15 and 11)
+
+Electron 38+ needs macOS 12, so the main Mac build does too. The legacy build
+(`build-resources/mac-legacy.config.js`) is the same app packaged with
+Electron 32, the last version that runs on macOS 10.15 Catalina, Intel only
+(every Mac stuck on 10.15 or 11 is an Intel Mac).
+
+- **Electron 32 gets no more security fixes.** That is acceptable only
+  because the window shows nothing but the app's own page; Vinted opens in
+  the bundled Firefox, which is the current release (Firefox supports macOS
+  10.15+). Don't make the window load remote pages while the legacy build
+  exists.
+- **Its own update channel.** It is published with `channel: legacy`, so it
+  reads `legacy-mac.yml` and never installs the main build on a macOS that
+  can't run it. Once the user upgrades to macOS 12+, the app switches itself
+  to `latest-mac.yml` and moves to the main build (`src/main/updater.ts`).
+- **Same code.** No separate branch: main-process code must keep running on
+  Electron 32 (Node 20, Chromium 128). Check with
+  `ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm i --no-save --ignore-scripts electron@32.3.3 && npm run typecheck`,
+  then `npm ci` to restore.
+- **Checked at build time.** On every Mac build, `build-resources/after-pack.js`
+  fails the build if Electron or the bundled Firefox needs a newer macOS than
+  `mac.minimumSystemVersion`. When Firefox drops Catalina, the legacy build
+  will fail there: pin a Firefox ESR that still supports it with
+  `FIREFOX_VERSION`, or retire the legacy build.
+
 ## Platform notes
 
 - On macOS, closing Firefox's last window doesn't quit it. The login watches
@@ -170,7 +200,8 @@ to `resources/firefox`. Pin a version with `FIREFOX_VERSION=158.0`.
 
 ## Smoke test before sending
 
-On a clean machine of each OS, **without Firefox installed**: install, log
+On a clean machine of each OS (for the legacy build, a Mac on macOS 10.15 or
+11), **without Firefox installed**: install, log
 in, and run one "Open Firefox and log in" flow end to end. On macOS, check that
 closing the Firefox window (not ⌘Q) saves the session, that no "wants to
 control Firefox" permission prompt appears, and that opening the app from the

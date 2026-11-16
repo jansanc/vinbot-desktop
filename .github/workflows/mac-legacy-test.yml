@@ -1,0 +1,103 @@
+# Temporary: build the legacy Mac app (macOS 10.15/11, Electron 32) and check
+# its Firefox login on a real Intel Mac VM. GitHub has no macOS 10.15/11
+# runners, so this checks Electron 32 + the bundled Firefox, not the old OS.
+name: Mac legacy test
+on:
+  push:
+    branches: ["test/mac-legacy"]
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: System info
+        run: |
+          exec > >(tee "$RUNNER_TEMP/0-system.log") 2>&1
+          sw_vers; uname -m; spctl --status || true
+      - run: npm ci
+      - name: Build the legacy app (ad-hoc signed)
+        run: |
+          set -o pipefail
+          CSC_IDENTITY_AUTO_DISCOVERY=false MAC_ADHOC_SIGN=true npm run dist:mac-legacy 2>&1 | tee "$RUNNER_TEMP/build-full.log"
+      - name: Inspect the build
+        if: always()
+        run: |
+          exec > >(tee "$RUNNER_TEMP/1-build.log") 2>&1
+          grep -E "afterPack|runs on macOS|minimum macOS|electron=|loaded configuration|building|error|Error" "$RUNNER_TEMP/build-full.log" | cut -c1-250 | head -40
+          ls -la dist-app
+          echo "--- legacy-mac.yml"; cat dist-app/legacy-mac.yml || true
+          echo "--- latest-mac.yml must NOT exist:"; ls dist-app/latest-mac.yml 2>&1 || true
+          APP="dist-app/mac/Vinbot Authenticator.app"
+          echo "--- app Info.plist"
+          plutil -extract LSMinimumSystemVersion raw -o - "$APP/Contents/Info.plist" || true
+          plutil -extract CFBundleShortVersionString raw -o - "$APP/Contents/Frameworks/Electron Framework.framework/Resources/Info.plist" || true
+          echo "--- app-update.yml"; cat "$APP/Contents/Resources/app-update.yml" || true
+      - name: Install the DMG (quarantined, like a browser download)
+        run: |
+          exec > >(tee "$RUNNER_TEMP/2-install.log") 2>&1
+          DMG=$(ls dist-app/*-mac-legacy-x64.dmg)
+          cp "$DMG" "$RUNNER_TEMP/legacy.dmg"
+          xattr -w com.apple.quarantine "0083;$(printf %x $(date +%s));Safari;$(uuidgen)" "$RUNNER_TEMP/legacy.dmg"
+          hdiutil attach -nobrowse -mountpoint /Volumes/vinbot "$RUNNER_TEMP/legacy.dmg"
+          ditto "/Volumes/vinbot/Vinbot Authenticator.app" "/Applications/Vinbot Authenticator.app"
+          APP="/Applications/Vinbot Authenticator.app"
+          file "$APP/Contents/MacOS/Vinbot Authenticator"
+          codesign --verify --deep --strict --verbose=2 "$APP/Contents/Resources/firefox/Firefox.app" 2>&1 || true
+          spctl -a -vv -t exec "$APP/Contents/Resources/firefox/Firefox.app" 2>&1 || true
+          plutil -extract LSMinimumSystemVersion raw -o - "$APP/Contents/Resources/firefox/Firefox.app/Contents/Info.plist" || true
+      - name: Launch the bundled Firefox directly (same args as the app)
+        run: |
+          exec > >(tee "$RUNNER_TEMP/3-direct.log") 2>&1
+          FF="/Applications/Vinbot Authenticator.app/Contents/Resources/firefox/Firefox.app/Contents/MacOS/firefox"
+          PROFILE=$(mktemp -d)
+          "$FF" -no-remote -new-instance -profile "$PROFILE" "https://www.vinted.es" > "$RUNNER_TEMP/ff-direct.log" 2>&1 &
+          PID=$!
+          for i in 1 2 3 4 5 6; do
+            sleep 5
+            if kill -0 $PID 2>/dev/null; then echo "t=$((i*5))s alive"; else wait $PID; echo "t=$((i*5))s EXITED code=$?"; break; fi
+          done
+          screencapture -x "$RUNNER_TEMP/direct.png" || true
+          echo "--- windows"; osascript -l JavaScript scripts/mac-test/windows.js || true
+          kill $PID 2>/dev/null || true; sleep 3; kill -9 $PID 2>/dev/null || true
+          echo "--- firefox output"; tail -30 "$RUNNER_TEMP/ff-direct.log"
+      - name: Run the app's login code under Electron 32 with the bundled Firefox
+        run: |
+          npm i --no-save electron@32.3.3
+          node node_modules/electron/install.js
+          npx electron --version
+          rm -rf vendor/firefox && mkdir -p vendor/firefox
+          ditto "/Applications/Vinbot Authenticator.app/Contents/Resources/firefox/Firefox.app" vendor/firefox/Firefox.app
+          ( sleep 15; screencapture -x "$RUNNER_TEMP/login-15s.png"; osascript -l JavaScript scripts/mac-test/windows.js; ps -axo pid,ppid,etime,command | grep -i [f]irefox | cut -c1-200 ) > "$RUNNER_TEMP/4b-during-login.log" 2>&1 &
+          ( echo "electron $(npx electron --version)"; LOGIN_TIMEOUT=40 npx electron scripts/mac-test/login-main.js 2>&1 | grep -v "^\s*$" ) > "$RUNNER_TEMP/4-login.log"; cat "$RUNNER_TEMP/4-login.log"
+      - name: Launch the installed app itself and watch for crashes
+        run: |
+          exec > >(tee "$RUNNER_TEMP/5-app.log") 2>&1
+          APP="/Applications/Vinbot Authenticator.app"
+          "$APP/Contents/MacOS/Vinbot Authenticator" > "$RUNNER_TEMP/app-out.txt" 2>&1 &
+          PID=$!
+          sleep 20
+          screencapture -x "$RUNNER_TEMP/app.png" || true
+          kill -0 $PID && echo "app alive" || echo "app exited"
+          kill $PID 2>/dev/null || true
+          head -60 "$RUNNER_TEMP/app-out.txt"
+          ls ~/Library/Logs/DiagnosticReports/ 2>/dev/null | tail -10 || true
+      # Job logs need a token; annotations are public, so report through them
+      - name: Report
+        if: always()
+        run: |
+          for f in "$RUNNER_TEMP"/[0-9]*.log; do
+            body=$(tail -c 30000 "$f" | cut -c1-300 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::notice title=legacy $(basename "$f")::$body"
+          done
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: mac-legacy-test
+          path: |
+            ${{ runner.temp }}/*.png
+            ${{ runner.temp }}/*.log

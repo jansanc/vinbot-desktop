@@ -20,6 +20,7 @@
     "dist": "npm run electron-build",
     "dist:win": "npm run electron:download && npm run electron-build -- --win -c.electronDist=node_modules/electron/dist",
     "dist:mac": "npm run electron-build -- --mac",
+    "dist:mac-legacy": "npm run electron-build -- --mac --config build-resources/mac-legacy.config.js",
     "firefox:fetch": "node scripts/fetch-firefox.js",
     "electron:download": "node node_modules/electron/install.js"
   },
